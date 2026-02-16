@@ -8,13 +8,17 @@ sys.path.append(os.getcwd())
 from ugv_rl.controllers.real_robot import RealRobot
 
 def main():
-    print("Initializing RealRobot...")
+    port = '/dev/ttyTHS1'
+    if len(sys.argv) > 1:
+        port = sys.argv[1]
+
+    print(f"Initializing RealRobot on {port}...")
     try:
-        # Default port /dev/serial0, baud 115200. Change if necessary.
-        robot = RealRobot()
+        robot = RealRobot(serial_port=port)
     except Exception as e:
         print(f"Error initializing robot: {e}")
-        print("Check if /dev/serial0 exists and you have permissions (sudo or dialout group).")
+        print(f"Make sure {port} exists and you have permissions (sudo or dialout group).")
+        print("Common ports on Jetson: /dev/ttyTHS1, /dev/ttyACM0, /dev/ttyUSB0")
         return
 
     print("WARNING: Robot will move! Ensure it is safe.")

@@ -5,8 +5,8 @@ from ugv_rl.controllers.waveshare_controller import WaveshareController
 class RealRobot(RobotInterface):
     """
     Real robot implementation using WaveshareController.
-    """
-    def __init__(self, serial_port: str = '/dev/serial0', baud_rate: int = 115200, wheel_base: float = 0.15, max_pwm: int = 100):
+    # On Jetson Nano, the UART on the 40-pin header is usually /dev/ttyTHS1
+    def __init__(self, serial_port: str = '/dev/ttyTHS1', baud_rate: int = 115200, wheel_base: float = 0.15, max_pwm: int = 100):
         self.controller = WaveshareController(serial_port, baud_rate)
         self.wheel_base = wheel_base
         self.max_pwm = max_pwm # Assuming 0-100 or 0-255 scaling depending on firmware
