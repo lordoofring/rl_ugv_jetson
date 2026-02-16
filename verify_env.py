@@ -1,11 +1,11 @@
-from ugv_rl.envs.grid_nav_env import GridNavEnv
+from ugv_rl.envs.grid_map_env import GridMapEnv
 from ugv_rl.controllers.mock_robot import MockRobot
 import time
 
 def test_env():
     print("Initializing environment with MockRobot...")
     robot = MockRobot()
-    env = GridNavEnv(config_path='config.yaml', robot=robot)
+    env = GridMapEnv(config_path='config.yaml', robot=robot)
     
     print("Resetting environment...")
     obs, info = env.reset()
