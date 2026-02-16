@@ -24,6 +24,10 @@ class RobotServer:
         self.sock.listen(1)
         print(f"Robot Server listening on {self.host}:{self.port}")
         
+        # Start State Update Thread
+        self.update_thread = threading.Thread(target=self._update_loop, daemon=True)
+        self.update_thread.start()
+        
         try:
             while self.running:
                 print("Waiting for connection...")
@@ -34,6 +38,14 @@ class RobotServer:
             print("Server stopping...")
         finally:
             self.stop()
+
+    def _update_loop(self):
+        """Periodically update robot state (Dead Reckoning)."""
+        dt = 0.1
+        while self.running:
+            if self.robot:
+                self.robot.step_simulation(dt)
+            time.sleep(dt)
 
     def handle_client(self, client):
         self.client_sock = client
@@ -61,6 +73,13 @@ class RobotServer:
                         resp['state'] = self.robot.get_state()
                     else:
                         resp['state'] = {'x': 0, 'y': 0, 'theta': 0, 'v': 0, 'omega': 0}
+                
+                elif cmd == 'reset':
+                    x = float(req.get('x', 0.0))
+                    y = float(req.get('y', 0.0))
+                    theta = float(req.get('theta', 0.0))
+                    if self.robot:
+                        self.robot.reset(x, y, theta)
                         
                 else:
                     resp['status'] = 'error'

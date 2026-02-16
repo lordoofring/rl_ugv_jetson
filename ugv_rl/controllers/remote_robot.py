@@ -66,7 +66,18 @@ class RemoteRobot(RobotInterface):
         return {'x':0, 'y':0, 'theta':0, 'v':0, 'omega':0}
 
     def reset(self, x: float = 0.0, y: float = 0.0, theta: float = 0.0) -> None:
-        self.stop()
+        if not self.connected: return
+        cmd = {
+            "cmd": "reset",
+            "x": x,
+            "y": y,
+            "theta": theta
+        }
+        try:
+            NetworkProtocol.send_msg(self.sock, cmd)
+            NetworkProtocol.recv_msg(self.sock) # ACK
+        except:
+            pass
 
     def step_simulation(self, dt: float) -> None:
         pass

@@ -11,7 +11,7 @@ def run_server_threadback():
     print("Starting Mock Server...")
     # Use MockRobot for this test so we don't need hardware
     robot = MockRobot()
-    server = RobotServer(port=5900, robot=robot)
+    server = RobotServer(port=5000, robot=robot)
     server.start()
 
 def main():
@@ -22,7 +22,7 @@ def main():
     time.sleep(1.0) # Wait for server to bind
     
     print("Connecting Client...")
-    client = RemoteRobot(ip='127.0.0.1', port=5900)
+    client = RemoteRobot(ip='192.168.137.51', port=5000)
     
     if not client.connected:
         print("Failed to connect!")

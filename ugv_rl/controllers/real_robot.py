@@ -14,6 +14,11 @@ class RealRobot(RobotInterface):
         
         self.current_v = 0.0
         self.current_omega = 0.0
+        
+        # Dead Reckoning State
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
 
     def move(self, linear_vel: float, angular_vel: float) -> None:
         """
@@ -31,7 +36,6 @@ class RealRobot(RobotInterface):
         right_vel = max(min(right_vel, self.max_speed), -self.max_speed)
         
         # Send direct velocity commands (floats)
-        # print(f"DEBUG: Move v={linear_vel:.2f}, w={angular_vel:.2f} -> Vel L={left_vel:.2f}, R={right_vel:.2f}")
         self.controller.base_speed_ctrl(left_vel, right_vel)
 
     def stop(self) -> None:
@@ -42,9 +46,9 @@ class RealRobot(RobotInterface):
     def get_state(self) -> Dict[str, Any]:
         data = self.controller.on_data_received()
         return {
-            'x': 0.0, 
-            'y': 0.0, 
-            'theta': 0.0, 
+            'x': self.x, 
+            'y': self.y, 
+            'theta': self.theta, 
             'v': self.current_v,
             'omega': self.current_omega,
             'raw_sensor_data': data
@@ -52,10 +56,21 @@ class RealRobot(RobotInterface):
 
     def reset(self, x: float = 0.0, y: float = 0.0, theta: float = 0.0) -> None:
         self.stop()
-        pass
+        self.x = x
+        self.y = y
+        self.theta = theta
 
     def close(self):
         self.controller.close()
 
     def step_simulation(self, dt: float) -> None:
-        pass
+        """
+        Update estimated position based on last command.
+        """
+        import math
+        self.x += self.current_v * math.cos(self.theta) * dt
+        self.y += self.current_v * math.sin(self.theta) * dt
+        self.theta += self.current_omega * dt
+        
+        # Normalize theta
+        self.theta = (self.theta + math.pi) % (2 * math.pi) - math.pi

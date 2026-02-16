@@ -2,7 +2,7 @@ import argparse
 import yaml
 import os
 import time
-
+import pygame
 import numpy as np
 import json
 from stable_baselines3 import PPO
@@ -86,43 +86,61 @@ def main():
             except:
                 print("No model found, creating random agent for testing.")
                 model = PPO("MlpPolicy", env) # untrained
+                model.is_random_agent = True
                 
-        obs, _ = env.reset()
-        done = False
-        
-        # for visualization
+        # Initialize UI (Pygame)
         import pygame
         from ugv_rl.ui.app import UGVApp
-        app = UGVApp()
-        app.mode = 'run'
-        app.map_grid = env.map
-        # Convert absolute metric positions back to grid indices for UI
-        # This is a bit hacky, UI should support metric or we sync better
-        # For now, just visualizing map. Robot update needed.
+        try:
+            app = UGVApp()
+            app.mode = 'run'
+            app.map_grid = env.map
+            print("Visualization initialized.")
+        except Exception as e:
+            print(f"Visualization failed: {e}")
+            app = None
 
-        while not done:
-            # Handle Pygame events to allow closing
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    done = True
+        running = True
+        while running:
+            obs, _ = env.reset()
+            done = False
+            truncated = False
+            
+            print("Starting new episode...")
+            
+            while not done and not truncated:
+                # Handle Pygame events to allow closing
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        done = True
+                        running = False
+                        print("User closed the window.")
 
-            action, _ = model.predict(obs, deterministic=True)
-            obs, reward, done, truncated, info = env.step(action)
-            
-            # Update UI
-            state = env.robot.get_state()
-            app.robot_pose = (state['x'], state['y'], state['theta'])
-            
-            app.screen.fill(GRAY)
-            app.draw_grid()
-            app.draw_robot()
-            pygame.display.flip()
-            # clock tick?
-            
-            if done or truncated:
-                print(f"Episode finished. Info: {info}")
-                obs, _ = env.reset()
-                break # Just run one episode for test
+                if not running:
+                    break
+                
+                # If using a trained model, usually deterministic is better.
+                # If using a random/untrained model, we MUST use stochastic (deterministic=False) 
+                # otherwise it will repeat the same random action forever.
+                use_deterministic = True
+                if getattr(model, "is_random_agent", False):
+                     use_deterministic = False
+                     
+                action, _ = model.predict(obs, deterministic=use_deterministic)
+                obs, reward, done, truncated, info = env.step(action)
+                
+                # Update UI
+                state = env.robot.get_state()
+                app.robot_pose = (state['x'], state['y'], state['theta'])
+                
+                app.screen.fill(GRAY)
+                app.draw_grid()
+                app.draw_robot()
+                pygame.display.flip()
+                
+                if done or truncated:
+                    print(f"Episode finished. Info: {info}")
+                    # Loop continues to next episode reset
                 
     if args.real:
         robot.close()
