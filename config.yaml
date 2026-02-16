@@ -1,0 +1,15 @@
+robot:
+  type: "mock" # Options: "mock", "real"
+  wheel_base: 0.15 # Meters (approximate for Jetson UGV)
+  wheel_radius: 0.03 # Meters (approximate)
+  max_speed: 0.5 # m/s
+
+env:
+  grid_size: 10
+  cell_size: 1.0 # Meters
+  max_steps: 100
+
+training:
+  total_timesteps: 100000
+  learning_rate: 0.0003
+  batch_size: 64
