@@ -43,7 +43,7 @@ def main():
 
     try:
         print("Moving FORWARD at 0.2 m/s...")
-        robot.move(0.2, 0.0) # 0.2 m/s linear, 0 angular
+        robot.move(0.2, 0.0) # 0.2 m/s linear
         time.sleep(2.0)
         
         print("STOPPING...")

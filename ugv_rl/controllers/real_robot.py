@@ -6,18 +6,18 @@ class RealRobot(RobotInterface):
     """
     Real robot implementation using WaveshareController.
     """
-    #Uart must be /dev/ttyTHS1
-    def __init__(self, serial_port: str = '/dev/ttyTHS1', baud_rate: int = 115200, wheel_base: float = 0.15, max_pwm: int = 255):
+    # On Jetson Nano, the UART on the 40-pin header is usually /dev/ttyTHS1
+    def __init__(self, serial_port: str = '/dev/ttyTHS1', baud_rate: int = 115200, wheel_base: float = 0.15, max_speed: float = 0.5):
         self.controller = WaveshareController(serial_port, baud_rate)
         self.wheel_base = wheel_base
-        self.max_pwm = max_pwm # Updated to 255 based on standard Waveshare UGV code
+        self.max_speed = max_speed 
         
         self.current_v = 0.0
         self.current_omega = 0.0
 
     def move(self, linear_vel: float, angular_vel: float) -> None:
         """
-        Convert twist (v, omega) to differential drive wheel speeds (PWM).
+        Convert twist (v, omega) to differential drive wheel speeds (m/s).
         """
         self.current_v = linear_vel
         self.current_omega = angular_vel
@@ -26,19 +26,13 @@ class RealRobot(RobotInterface):
         left_vel = linear_vel - (angular_vel * self.wheel_base / 2.0)
         right_vel = linear_vel + (angular_vel * self.wheel_base / 2.0)
 
-        # Scale to PWM
-        # Assumption: 0.5 m/s is approximately max speed at max PWM
-        velocity_to_pwm_scale = self.max_pwm / 0.5 
+        # Clamp values to max speed
+        left_vel = max(min(left_vel, self.max_speed), -self.max_speed)
+        right_vel = max(min(right_vel, self.max_speed), -self.max_speed)
         
-        left_pwm = int(left_vel * velocity_to_pwm_scale)
-        right_pwm = int(right_vel * velocity_to_pwm_scale)
-        
-        # Clamp values
-        left_pwm = max(min(left_pwm, self.max_pwm), -self.max_pwm)
-        right_pwm = max(min(right_pwm, self.max_pwm), -self.max_pwm)
-        
-        # print(f"DEBUG: Move v={linear_vel:.2f}, w={angular_vel:.2f} -> PWM L={left_pwm}, R={right_pwm}")
-        self.controller.base_speed_ctrl(left_pwm, right_pwm)
+        # Send direct velocity commands (floats)
+        # print(f"DEBUG: Move v={linear_vel:.2f}, w={angular_vel:.2f} -> Vel L={left_vel:.2f}, R={right_vel:.2f}")
+        self.controller.base_speed_ctrl(left_vel, right_vel)
 
     def stop(self) -> None:
         self.controller.base_speed_ctrl(0, 0)

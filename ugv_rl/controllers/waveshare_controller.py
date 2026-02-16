@@ -62,8 +62,9 @@ class WaveshareController:
                 print(f"Serial write error: {e}")
 
     def base_speed_ctrl(self, input_left, input_right):
-        # inputs should be integers, likely -255 to 255
-        data = {"T":1,"L":int(input_left),"R":int(input_right)}
+        # T:1 is the command for speed control
+        # Inputs are likely floats (m/s) based on user feedback
+        data = {"T":1,"L":input_left,"R":input_right}
         self.send_command(data)
 
     def gimbal_emergency_stop(self):
