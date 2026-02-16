@@ -1,6 +1,7 @@
 import time
 import sys
 import os
+import serial
 
 # Ensure the current directory is in python path to find ugv_rl
 sys.path.append(os.getcwd())
@@ -16,17 +17,32 @@ def main():
     try:
         robot = RealRobot(serial_port=port)
     except Exception as e:
-        print(f"Error initializing robot: {e}")
-        print(f"Make sure {port} exists and you have permissions (sudo or dialout group).")
-        print("Common ports on Jetson: /dev/ttyTHS1, /dev/ttyACM0, /dev/ttyUSB0")
-        return
+        print(f"Error initializing robot on {port}: {e}")
+        print("Trying fallback ports...")
+        fallback_ports = ['/dev/ttyACM0', '/dev/ttyUSB0', '/dev/serial0']
+        for p in fallback_ports:
+            if p == port: continue
+            print(f"Trying {p}...")
+            try:
+                robot = RealRobot(serial_port=p)
+                port = p
+                print(f"Success on {p}!")
+                break
+            except:
+                pass
+        else:
+            print("Could not connect to any common serial port.")
+            return
 
     print("WARNING: Robot will move! Ensure it is safe.")
     print("Press ENTER to start the test (or Ctrl+C to cancel)...")
-    input()
+    try:
+        input()
+    except KeyboardInterrupt:
+        return
 
     try:
-        print("Moving FORWARD at 0.2 m/s for 2 seconds...")
+        print("Moving FORWARD at 0.2 m/s...")
         robot.move(0.2, 0.0) # 0.2 m/s linear, 0 angular
         time.sleep(2.0)
         
@@ -34,8 +50,8 @@ def main():
         robot.stop()
         time.sleep(1.0)
         
-        print("Turning LEFT at 0.5 rad/s for 2 seconds...")
-        robot.move(0.0, 0.5) # 0 m/s linear, 0.5 rad/s angular
+        print("Turning LEFT at 0.5 rad/s...")
+        robot.move(0.0, 0.5) 
         time.sleep(2.0)
         
         print("STOPPING...")

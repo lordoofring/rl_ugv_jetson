@@ -37,13 +37,14 @@ class WaveshareController:
 
     def on_data_received(self):
         try:
-            line = self.rl.readline()
-            if line:
-                data_read = json.loads(line.decode('utf-8'))
-                # self.ser.reset_input_buffer() # Might lose data if we reset too aggressively
-                return data_read
+            # Non-blocking read attempt not trivial with ReadLine blocking
+            # But the Thread is writing. We are reading in main thread.
+            if self.ser.in_waiting:
+                line = self.rl.readline()
+                if line:
+                    data_read = json.loads(line.decode('utf-8'))
+                    return data_read
         except Exception as e:
-            # print(f"Error reading data: {e}")
             pass
         return None
 
@@ -54,13 +55,14 @@ class WaveshareController:
         while True:
             data = self.command_queue.get()
             try:
-                self.ser.write((json.dumps(data) + '\n').encode("utf-8"))
+                msg = json.dumps(data) + '\n'
+                # print(f"DEBUG: Sending: {msg.strip()}") 
+                self.ser.write(msg.encode("utf-8"))
             except Exception as e:
                 print(f"Serial write error: {e}")
 
     def base_speed_ctrl(self, input_left, input_right):
-        # inputs are likely -255 to 255 or similar, need to verify with user or docs. 
-        # Assuming direct control values for now.
+        # inputs should be integers, likely -255 to 255
         data = {"T":1,"L":int(input_left),"R":int(input_right)}
         self.send_command(data)
 
