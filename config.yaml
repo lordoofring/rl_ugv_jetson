@@ -6,7 +6,8 @@ robot:
 
 env:
   grid_size: 10
-  cell_size: 1.0 # Meters
+  cell_size: 0.5 # The physical size of one grid square in meters. Change this to match your real-world tiles (e.g. 0.6).
+  pixels_per_cell: 60 # Visual size on screen (pixels). Decrease if map doesn't fit on screen.
   max_steps: 100
 
 training:

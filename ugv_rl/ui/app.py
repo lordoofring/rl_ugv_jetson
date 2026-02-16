@@ -25,7 +25,7 @@ class UGVApp:
         self.cell_size_m = self.config['env'].get('cell_size', 1.0)
         
         # Window settings
-        self.cell_px = 60 # Pixels per cell
+        self.cell_px = self.config['env'].get('pixels_per_cell', 60) # Pixels per cell
         self.width = self.grid_size * self.cell_px
         self.height = self.grid_size * self.cell_px + 100 # Extra space for controls
         
