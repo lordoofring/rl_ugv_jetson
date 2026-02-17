@@ -24,8 +24,8 @@ class GridMapEnv(gym.Env):
         self.cell_size = self.config['env'].get('cell_size', 1.0)
         self.max_steps = self.config['env'].get('max_steps', 200)
         
-        # Action space: 0=Forward, 1=Left, 2=Right
-        self.action_space = spaces.Discrete(3)
+        # Action space: 0=North, 1=South, 2=East, 3=West
+        self.action_space = spaces.Discrete(4)
         
         # Observation space:
         # [rel_goal_x, rel_goal_y, sin(theta), cos(theta), lidar_1 ... lidar_8]
@@ -70,68 +70,104 @@ class GridMapEnv(gym.Env):
     def step(self, action):
         self.steps += 1
         
-        # Convert action to robot command
-        linear_v = 0.0
-        angular_v = 0.0
+        # 1. Determine Target Position based on Action
+        # Current rounded grid position
+        cx = round(self.robot.x / self.cell_size) * self.cell_size
+        cy = round(self.robot.y / self.cell_size) * self.cell_size
         
-        speed = self.config['robot'].get('max_speed', 0.5)
+        target_x, target_y = cx, cy
+        target_theta = 0.0
         
-        if action == 0: # Forward
-            linear_v = speed
-        elif action == 1: # Left
-            angular_v = 1.0 
-        elif action == 2: # Right
-            angular_v = -1.0
+        if action == 0: # North (-Y for grid image, but let's assume standard cartesian +Y is North? 
+                        # Wait, in image coords usually +Y is Down. 
+                        # Let's stick to standard math: +Y is Up (North), +X is Right (East)
+                        # The map editor might use matrix indexing which is (row, col) -> (y, x).
+                        # Let's check map editor... it uses [gx, gy]. pygame draws x=gx*cell, y=gy*cell.
+                        # So +X is Right, +Y is Down (Screen coords).
+                        # So North should be -Y?
+                        # Let's define: 0=North(-Y), 1=South(+Y), 2=East(+X), 3=West(-X)
+            target_y = cy - self.cell_size
+            target_theta = -math.pi / 2 # -90 deg
+        elif action == 1: # South (+Y)
+            target_y = cy + self.cell_size
+            target_theta = math.pi / 2 # +90 deg
+        elif action == 2: # East (+X)
+            target_x = cx + self.cell_size
+            target_theta = 0.0 # 0 deg
+        elif action == 3: # West (-X)
+            target_x = cx - self.cell_size
+            target_theta = math.pi # 180 deg
             
-        self.robot.move(linear_v, angular_v)
-        
-        # Simulation Step
-        dt = 0.1
-        if isinstance(self.robot, MockRobot):
-            original_x, original_y = self.robot.x, self.robot.y
-            self.robot.step_simulation(dt)
-            # Collision Check for Mock Robot
-            # If hit obstacle, assume revert position or stop?
-            # Simple check: point-in-obstacle
-            if self._check_collision(self.robot.x, self.robot.y):
-                # Hit obstacle!
-                # Revert to previous position (simple physics)
-                self.robot.x = original_x
-                self.robot.y = original_y
-                reward = -5.0 # Large penalty for collision
-                done = True
-                return self._get_obs(), reward, done, False, {"collision": True}
+        # 2. Check Validity (Collision / OOB)
+        if self._check_collision(target_x, target_y) or self._check_oob(target_x, target_y):
+            # Invalid move
+            reward = -5.0
+            # Don't move robot
+            # done = True ? No, let it learn.
         else:
-            # Real robot waits
-            import time
-            time.sleep(dt)
+            # 3. Execute Move (Turn then Drive)
+            self._execute_cardinal_move(target_theta, self.cell_size)
+            reward = -0.1
             
         # Get new state
         state = self.robot.get_state()
         x, y = state['x'], state['y']
         
-        # Check map bounds
-        if not (0 <= x <= self.grid_size * self.cell_size and 0 <= y <= self.grid_size * self.cell_size):
-            reward = -5.0 # Out of bounds
-            done = True
-            return self._get_obs(), reward, done, False, {"out_of_bounds": True}
-            
         # Distance to goal
         dist = np.sqrt((self.goal_pos[0] - x)**2 + (self.goal_pos[1] - y)**2)
         
-        # Reward
-        reward = -0.05 # Smaller step penalty
-        done = False
-        
-        # Reached goal?
-        if dist < 0.5: 
+        if dist < self.cell_size / 2:
             reward += 100.0
             done = True
+        else:
+            done = False
             
         if self.steps >= self.max_steps:
             done = True
             
         return self._get_obs(), reward, done, False, {}
+
+    def _check_oob(self, x, y):
+        # Slightly permissive bounds since x,y are floats
+        return not (0 <= x < self.grid_size * self.cell_size and 0 <= y < self.grid_size * self.cell_size)
+
+    def _execute_cardinal_move(self, target_theta, dist):
+        """Blocking function to turn robot then move forward."""
+        # A. Turn
+        current_theta = self.robot.theta
+        diff = target_theta - current_theta
+        # Normalize to [-pi, pi]
+        diff = (diff + math.pi) % (2 * math.pi) - math.pi
+        
+        # Simple turning params
+        w_speed = 1.0 # rad/s
+        turn_duration = abs(diff) / w_speed
+        
+        if abs(diff) > 0.1: # Only turn if needed
+            w_cmd = w_speed if diff > 0 else -w_speed
+            self.robot.move(0.0, w_cmd)
+            
+            if isinstance(self.robot, MockRobot):
+                self.robot.step_simulation(turn_duration)
+            else:
+                import time
+                time.sleep(turn_duration)
+                
+            self.robot.stop()
+            
+        # B. Move Forward
+        v_speed = self.config['robot'].get('max_speed', 0.5)
+        move_duration = dist / v_speed
+        
+        self.robot.move(v_speed, 0.0)
+        
+        if isinstance(self.robot, MockRobot):
+            self.robot.step_simulation(move_duration)
+        else:
+            import time
+            time.sleep(move_duration)
+            
+        self.robot.stop()
 
     def _check_collision(self, x, y):
         """Check if position (x,y) is inside an obstacle cell."""
