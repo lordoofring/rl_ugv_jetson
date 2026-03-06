@@ -6,13 +6,11 @@ import pygame
 import numpy as np
 import json
 from stable_baselines3 import PPO
-from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import CheckpointCallback
 
-from ugv_rl.envs.grid_map_env import GridMapEnv
+from ugv_rl.envs.grid_map_env import GridMapEnv, ACTION_NAMES
 from ugv_rl.controllers.mock_robot import MockRobot
 from ugv_rl.controllers.real_robot import RealRobot
-from ugv_rl.ui.app import BLACK, WHITE, GRAY, RED, GREEN, BLUE
 
 def main():
     parser = argparse.ArgumentParser(description='Train or Test RL agent for UGV')
@@ -22,13 +20,13 @@ def main():
     parser.add_argument('--ip', type=str, default=None, help='IP address of Robot Server (if remote)')
     parser.add_argument('--model', type=str, default=None, help='Path to model to load')
     parser.add_argument('--timesteps', type=int, default=100000, help='Total timesteps for training')
-    
+
     args = parser.parse_args()
-    
+
     # Load config
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
-        
+
     # Create robot instance
     if args.real:
         if args.ip:
@@ -40,7 +38,7 @@ def main():
             robot = RealRobot()
     else:
         robot = MockRobot()
-        
+
     # Load Map if available
     map_layout = None
     start_pos = None
@@ -56,92 +54,110 @@ def main():
         print("No map.json found, using empty grid.")
 
     # Create environment
-    # Note: make_vec_env automatically wraps the env. 
-    # For custom env with init args, needed a callable.
     env = GridMapEnv(config_path='config.yaml', robot=robot, map_layout=map_layout)
-    
+
     if start_pos is not None:
         env.set_map(map_layout, start_pos, goal_pos)
-    
+
     if args.train:
         print("Starting training...")
         model = PPO("MlpPolicy", env, verbose=1, learning_rate=config['training']['learning_rate'])
-        
-        # Save checkpoints
+
         checkpoint_callback = CheckpointCallback(save_freq=10000, save_path='./models/',
                                                  name_prefix='ugv_ppo')
-                                                 
+
         model.learn(total_timesteps=args.timesteps, callback=checkpoint_callback)
         model.save("ugv_ppo_final")
         print("Training finished.")
-        
+
     if args.test:
         print("Starting testing...")
         if args.model:
             model = PPO.load(args.model)
         else:
-            # If no model provided, use a fresh one (bad performance) or load default
             try:
                 model = PPO.load("ugv_ppo_final")
             except:
                 print("No model found, creating random agent for testing.")
-                model = PPO("MlpPolicy", env) # untrained
+                model = PPO("MlpPolicy", env)
                 model.is_random_agent = True
-                
-        # Initialize UI (Pygame)
-        import pygame
+
+        # Initialize UI
         from ugv_rl.ui.app import UGVApp
         try:
             app = UGVApp()
             app.mode = 'run'
             app.map_grid = env.map
+            app.start_pos = [env.start_gx, env.start_gy]
+            app.goal_pos = [env.goal_gx, env.goal_gy]
             print("Visualization initialized.")
         except Exception as e:
             print(f"Visualization failed: {e}")
             app = None
 
+        clock = pygame.time.Clock()
         running = True
+        episode_num = 0
+
         while running:
             obs, _ = env.reset()
             done = False
             truncated = False
-            
-            print("Starting new episode...")
-            
+            episode_reward = 0.0
+            episode_num += 1
+
+            if app:
+                app.trail = []
+                app.episode_num = episode_num
+                app.trail.append((env.agent_gx, env.agent_gy))
+
+            print(f"\n--- Episode {episode_num} ---")
+            print(f"Start: ({env.agent_gx}, {env.agent_gy})  Goal: ({env.goal_gx}, {env.goal_gy})")
+
             while not done and not truncated:
-                # Handle Pygame events to allow closing
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         done = True
                         running = False
                         print("User closed the window.")
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_q:
+                            done = True
+                            running = False
 
                 if not running:
                     break
-                
-                # If using a trained model, usually deterministic is better.
-                # If using a random/untrained model, we MUST use stochastic (deterministic=False) 
-                # otherwise it will repeat the same random action forever.
-                use_deterministic = True
-                if getattr(model, "is_random_agent", False):
-                     use_deterministic = False
-                     
+
+                use_deterministic = not getattr(model, "is_random_agent", False)
                 action, _ = model.predict(obs, deterministic=use_deterministic)
                 obs, reward, done, truncated, info = env.step(action)
-                
-                # Update UI
-                state = env.robot.get_state()
-                app.robot_pose = (state['x'], state['y'], state['theta'])
-                
-                app.screen.fill(GRAY)
-                app.draw_grid()
-                app.draw_robot()
-                pygame.display.flip()
-                
+                episode_reward += reward
+
+                action_name = ACTION_NAMES.get(int(action), '?')
+                print(f"  Step {env.steps}: {action_name} -> ({env.agent_gx},{env.agent_gy})  r={reward:.1f}")
+
+                # Update visualization
+                if app:
+                    app.agent_cell = (env.agent_gx, env.agent_gy)
+                    app.robot_pose = (env.agent_gx * env.cell_size,
+                                      env.agent_gy * env.cell_size,
+                                      env.agent_theta)
+                    app.action_name = action_name
+                    app.step_count = env.steps
+                    app.episode_reward = episode_reward
+                    app.trail.append((env.agent_gx, env.agent_gy))
+
+                    app.render_run_frame()
+
+                # Pace the visualization so you can watch it
+                clock.tick(4)  # 4 steps per second for readability
+
                 if done or truncated:
-                    print(f"Episode finished. Info: {info}")
-                    # Loop continues to next episode reset
-                
+                    result = "GOAL!" if env.agent_gx == env.goal_gx and env.agent_gy == env.goal_gy else "timeout/fail"
+                    print(f"  Episode finished: {result}  Total reward: {episode_reward:.1f}")
+                    # Pause briefly to see final state
+                    time.sleep(1.5)
+
     if args.real:
         robot.close()
 

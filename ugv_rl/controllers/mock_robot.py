@@ -19,7 +19,6 @@ class MockRobot(RobotInterface):
     def move(self, linear_vel: float, angular_vel: float) -> None:
         self.v = linear_vel
         self.omega = angular_vel
-        self._update_state()
 
     def stop(self) -> None:
         self.v = 0.0
