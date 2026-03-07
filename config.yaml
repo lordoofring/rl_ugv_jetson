@@ -3,6 +3,7 @@ robot:
   wheel_base: 0.15 # Meters (approximate for Jetson UGV)
   wheel_radius: 0.03 # Meters (approximate)
   max_speed: 0.5 # m/s
+  turn_speed: 1.0 # rad/s — adjust this to calibrate 90-degree turns
 
 env:
   grid_size: 10

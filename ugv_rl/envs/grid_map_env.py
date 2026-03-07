@@ -169,7 +169,7 @@ class GridMapEnv(gym.Env):
         diff = target_theta - current_theta
         diff = (diff + math.pi) % (2 * math.pi) - math.pi
 
-        w_speed = 1.0  # rad/s
+        w_speed = self.config['robot'].get('turn_speed', 1.0)
         turn_duration = abs(diff) / w_speed
 
         if abs(diff) > 0.1:
