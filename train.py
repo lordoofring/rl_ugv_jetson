@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--real', action='store_true', help='Use real robot (Local or Remote)')
     parser.add_argument('--ip', type=str, default=None, help='IP address of Robot Server (if remote)')
     parser.add_argument('--model', type=str, default=None, help='Path to model to load')
+    parser.add_argument('--manual', action='store_true', help='Manual WASD control for calibration')
     parser.add_argument('--timesteps', type=int, default=100000, help='Total timesteps for training')
 
     args = parser.parse_args()
@@ -157,6 +158,75 @@ def main():
                     print(f"  Episode finished: {result}  Total reward: {episode_reward:.1f}")
                     # Pause briefly to see final state
                     time.sleep(1.5)
+
+    if args.manual:
+        from ugv_rl.ui.app import UGVApp
+        app = UGVApp()
+        app.mode = 'run'
+        app.map_grid = env.map
+        app.start_pos = [env.start_gx, env.start_gy]
+        app.goal_pos = [env.goal_gx, env.goal_gy]
+
+        KEY_TO_ACTION = {
+            pygame.K_w: 0,  # North
+            pygame.K_s: 1,  # South
+            pygame.K_d: 2,  # East
+            pygame.K_a: 3,  # West
+        }
+
+        obs, _ = env.reset()
+        episode_reward = 0.0
+        app.trail = [(env.agent_gx, env.agent_gy)]
+        app.episode_num = 1
+
+        print("\n--- Manual Control ---")
+        print("W=North  S=South  A=West  D=East  R=Reset  Q=Quit")
+        print(f"Start: ({env.agent_gx}, {env.agent_gy})  Goal: ({env.goal_gx}, {env.goal_gy})")
+
+        running = True
+        while running:
+            # Update display
+            app.agent_cell = (env.agent_gx, env.agent_gy)
+            app.robot_pose = (env.agent_gx * env.cell_size,
+                              env.agent_gy * env.cell_size,
+                              env.agent_theta)
+            app.step_count = env.steps
+            app.episode_reward = episode_reward
+            app.render_run_frame()
+
+            # Wait for a keypress
+            action = None
+            while action is None and running:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_q:
+                            running = False
+                        elif event.key == pygame.K_r:
+                            obs, _ = env.reset()
+                            episode_reward = 0.0
+                            app.trail = [(env.agent_gx, env.agent_gy)]
+                            app.episode_num += 1
+                            app.action_name = 'RESET'
+                            print(f"\n--- Reset (Episode {app.episode_num}) ---")
+                            break
+                        elif event.key in KEY_TO_ACTION:
+                            action = KEY_TO_ACTION[event.key]
+                pygame.time.wait(30)
+
+            if action is not None:
+                obs, reward, done, truncated, info = env.step(action)
+                episode_reward += reward
+                action_name = ACTION_NAMES.get(action, '?')
+                app.action_name = action_name
+                app.trail.append((env.agent_gx, env.agent_gy))
+                print(f"  Step {env.steps}: {action_name} -> ({env.agent_gx},{env.agent_gy})  r={reward:.1f}")
+
+                if done:
+                    result = "GOAL!" if env.agent_gx == env.goal_gx and env.agent_gy == env.goal_gy else "done"
+                    print(f"  Episode finished: {result}  Total reward: {episode_reward:.1f}")
+                    print("  Press R to reset or Q to quit.")
 
     if args.real:
         robot.close()

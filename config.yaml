@@ -4,7 +4,7 @@ robot:
   wheel_radius: 0.03 # Meters (approximate)
   max_speed: 0.5 # m/s
   turn_wheel_speed: 0.3 # m/s per wheel during in-place turns — raise if motors won't spin
-  turn_time_90: 1.5 # seconds to complete a 90-degree turn — tweak until turns are accurate
+  turn_time_90: 1 # seconds to complete a 90-degree turn — tweak until turns are accurate
 
 env:
   grid_size: 10
