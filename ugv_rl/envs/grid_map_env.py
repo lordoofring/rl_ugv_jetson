@@ -170,7 +170,9 @@ class GridMapEnv(gym.Env):
         diff = (diff + math.pi) % (2 * math.pi) - math.pi
 
         w_speed = self.config['robot'].get('turn_speed', 1.0)
-        turn_duration = abs(diff) / w_speed
+        turn_time_90 = self.config['robot'].get('turn_time_90', 1.57)
+        # Scale duration proportionally to angle (turn_time_90 is for pi/2 radians)
+        turn_duration = turn_time_90 * abs(diff) / (math.pi / 2)
 
         if abs(diff) > 0.1:
             w_cmd = w_speed if diff > 0 else -w_speed
