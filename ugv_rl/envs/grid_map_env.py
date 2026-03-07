@@ -169,13 +169,17 @@ class GridMapEnv(gym.Env):
         diff = target_theta - current_theta
         diff = (diff + math.pi) % (2 * math.pi) - math.pi
 
-        w_speed = self.config['robot'].get('turn_speed', 1.0)
-        turn_time_90 = self.config['robot'].get('turn_time_90', 1.57)
-        # Scale duration proportionally to angle (turn_time_90 is for pi/2 radians)
+        wheel_base = self.config['robot'].get('wheel_base', 0.15)
+        turn_wheel_speed = self.config['robot'].get('turn_wheel_speed', 0.3)
+        turn_time_90 = self.config['robot'].get('turn_time_90', 1.5)
+
+        # Convert desired wheel speed to angular velocity for the move() interface
+        w_magnitude = turn_wheel_speed / (wheel_base / 2.0)
+        # Scale turn duration proportionally to angle
         turn_duration = turn_time_90 * abs(diff) / (math.pi / 2)
 
         if abs(diff) > 0.1:
-            w_cmd = w_speed if diff > 0 else -w_speed
+            w_cmd = w_magnitude if diff > 0 else -w_magnitude
             self.robot.move(0.0, w_cmd)
             import time
             time.sleep(turn_duration)
