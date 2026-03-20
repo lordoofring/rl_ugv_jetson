@@ -14,7 +14,7 @@ env:
 
 vision:
   enabled: false          # set true to use ArUco localizer on real robot
-  camera_index: 0         # /dev/video0 (or GStreamer pipeline string)
+  camera_index: -1        # -1 = auto-detect camera (recommended for Jetson)
   marker_map_path: "marker_map.json"
   marker_size: 0.05       # printed marker side-length in meters
   aruco_dict: "DICT_4X4_50"
