@@ -80,7 +80,17 @@ class RobotServer:
                     theta = float(req.get('theta', 0.0))
                     if self.robot:
                         self.robot.reset(x, y, theta)
-                        
+
+                elif cmd == 'localize':
+                    if self.robot and hasattr(self.robot, 'localize'):
+                        result = self.robot.localize()
+                        if result is not None:
+                            resp['pose'] = {'gx': result[0], 'gy': result[1], 'theta': result[2]}
+                        else:
+                            resp['pose'] = None
+                    else:
+                        resp['pose'] = None
+
                 else:
                     resp['status'] = 'error'
                     resp['msg'] = f"Unknown command: {cmd}"

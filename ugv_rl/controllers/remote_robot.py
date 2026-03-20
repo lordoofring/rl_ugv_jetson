@@ -96,6 +96,21 @@ class RemoteRobot(RobotInterface):
         except:
             pass
 
+    def localize(self):
+        """Request vision localization from the server."""
+        if not self.connected:
+            return None
+        try:
+            NetworkProtocol.send_msg(self.sock, {"cmd": "localize"})
+            resp = NetworkProtocol.recv_msg(self.sock)
+            if resp and resp.get('pose') is not None:
+                p = resp['pose']
+                return (p['gx'], p['gy'], p['theta'])
+        except Exception as e:
+            print(f"Localize error: {e}")
+            self.connected = False
+        return None
+
     def step_simulation(self, dt: float) -> None:
         pass
         
