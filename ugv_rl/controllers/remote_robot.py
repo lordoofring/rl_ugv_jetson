@@ -1,7 +1,12 @@
 import socket
 import json
 import time
-from typing import Dict, Any
+import base64
+from typing import Dict, Any, Optional
+
+import cv2
+import numpy as np
+
 from ugv_rl.core.robot_interface import RobotInterface
 from ugv_rl.network.protocol import NetworkProtocol
 
@@ -108,6 +113,22 @@ class RemoteRobot(RobotInterface):
                 return (p['gx'], p['gy'], p['theta'])
         except Exception as e:
             print(f"Localize error: {e}")
+            self.connected = False
+        return None
+
+    def get_frame(self) -> Optional[np.ndarray]:
+        """Request a camera frame from the server. Returns BGR image or None."""
+        if not self.connected:
+            return None
+        try:
+            NetworkProtocol.send_msg(self.sock, {"cmd": "get_frame"})
+            resp = NetworkProtocol.recv_msg(self.sock)
+            if resp and resp.get('frame') is not None:
+                jpg_bytes = base64.b64decode(resp['frame'])
+                frame = cv2.imdecode(np.frombuffer(jpg_bytes, np.uint8), cv2.IMREAD_COLOR)
+                return frame
+        except Exception as e:
+            print(f"get_frame error: {e}")
             self.connected = False
         return None
 

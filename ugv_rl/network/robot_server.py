@@ -2,7 +2,11 @@ import socket
 import threading
 import time
 import sys
+import base64
 from typing import Optional
+
+import cv2
+import numpy as np
 
 from ugv_rl.network.protocol import NetworkProtocol
 from ugv_rl.controllers.real_robot import RealRobot
@@ -90,6 +94,17 @@ class RobotServer:
                             resp['pose'] = None
                     else:
                         resp['pose'] = None
+
+                elif cmd == 'get_frame':
+                    frame_b64 = None
+                    if self.robot and hasattr(self.robot, 'vision') and self.robot.vision is not None:
+                        vis = self.robot.vision
+                        if vis._camera_ok:
+                            ret, frame = vis.cap.read()
+                            if ret and frame is not None:
+                                _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                                frame_b64 = base64.b64encode(buf).decode('ascii')
+                    resp['frame'] = frame_b64
 
                 else:
                     resp['status'] = 'error'
