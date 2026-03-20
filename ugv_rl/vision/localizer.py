@@ -102,24 +102,34 @@ class VisionLocalizer:
             None otherwise (caller should fall back to dead reckoning).
         """
         if not self._camera_ok:
+            print("[Vision] Camera not available – skipping localization.")
             return None
 
+        print("[Vision] Capturing frame...")
         ret, frame = self.cap.read()
         if not ret or frame is None:
+            print("[Vision] Failed to capture frame.")
             return None
 
+        print(f"[Vision] Frame captured ({frame.shape[1]}x{frame.shape[0]}). Scanning for ArUco markers...")
         return self.localize_from_frame(frame)
 
     def localize_from_frame(self, frame: np.ndarray) -> Optional[Tuple[int, int, float]]:
         """Run localization on an already-captured frame (useful for testing)."""
         detections = self._detect_markers(frame)
         if not detections:
+            print("[Vision] No markers detected in frame.")
             return None
+
+        print(f"[Vision] Detected {len(detections)} marker(s): {[d[0] for d in detections]}")
 
         # Filter to only markers that exist in our map
         known = [(mid, tvec, rvec) for mid, tvec, rvec in detections if mid in self.marker_map]
         if not known:
+            print(f"[Vision] None of the detected markers are in marker_map.json (known IDs: {list(self.marker_map.keys())})")
             return None
+
+        print(f"[Vision] {len(known)} marker(s) matched to map: {[k[0] for k in known]}")
 
         # If multiple markers visible, average the position estimates
         gx_estimates: List[float] = []
@@ -149,6 +159,9 @@ class VisionLocalizer:
             est_gx = robot_x / self.cell_size
             est_gy = robot_y / self.cell_size
 
+            print(f"[Vision]   Marker {marker_id} at grid ({mgx},{mgy}) -> "
+                  f"robot est. ({est_gx:.2f}, {est_gy:.2f}), theta={math.degrees(theta):.1f}°")
+
             gx_estimates.append(est_gx)
             gy_estimates.append(est_gy)
             theta_estimates.append(theta)
@@ -156,6 +169,9 @@ class VisionLocalizer:
         avg_gx = int(round(np.mean(gx_estimates)))
         avg_gy = int(round(np.mean(gy_estimates)))
         avg_theta = float(np.mean(theta_estimates))
+
+        print(f"[Vision] >>> Position confirmed: grid ({avg_gx}, {avg_gy}), "
+              f"heading={math.degrees(avg_theta):.1f}°")
 
         return avg_gx, avg_gy, avg_theta
 

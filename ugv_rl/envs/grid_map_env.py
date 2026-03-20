@@ -179,11 +179,19 @@ class GridMapEnv(gym.Env):
                     vgy = max(0, min(vgy, self.grid_size - 1))
                     # Only accept if the cell is free
                     if self.map[vgx, vgy] != 1:
+                        if vgx != target_gx or vgy != target_gy:
+                            print(f"  [Vision correction] Dead reckoning: ({target_gx},{target_gy}) -> Vision: ({vgx},{vgy})")
+                        else:
+                            print(f"  [Vision] Position matches dead reckoning: ({vgx},{vgy})")
                         self.agent_gx = vgx
                         self.agent_gy = vgy
                         self.agent_theta = vtheta
                         target_x = vgx * self.cell_size
                         target_y = vgy * self.cell_size
+                    else:
+                        print(f"  [Vision] Rejected ({vgx},{vgy}) – cell is an obstacle. Using dead reckoning.")
+                else:
+                    print(f"  [Vision] No markers seen – using dead reckoning: ({target_gx},{target_gy})")
 
                 # Sync dead reckoning to corrected position
                 self.robot.reset(target_x, target_y, self.agent_theta)

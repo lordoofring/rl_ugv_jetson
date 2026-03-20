@@ -166,6 +166,11 @@ def main():
                     app.episode_reward = episode_reward
                     app.trail.append((env.agent_gx, env.agent_gy))
 
+                    # Pull camera frame from robot if available
+                    if hasattr(robot, 'get_frame'):
+                        cam_frame = robot.get_frame()
+                        app.set_camera_frame(cam_frame)
+
                     app.render_run_frame()
 
                 # Pace the visualization so you can watch it

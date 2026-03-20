@@ -18,6 +18,8 @@ YELLOW = (255, 255, 0)  # Action arrow
 DARK_GREEN = (0, 150, 0)
 
 INFO_BAR_HEIGHT = 120
+CAMERA_PANEL_W = 240
+CAMERA_PANEL_H = 180
 
 class UGVApp:
     def __init__(self, config_path='config.yaml'):
@@ -53,6 +55,9 @@ class UGVApp:
         self.step_count = 0
         self.episode_reward = 0.0
         self.episode_num = 0
+
+        # Camera feed (set from outside via set_camera_frame)
+        self._camera_surface = None
 
     def draw_grid(self):
         for gx in range(self.grid_size):
@@ -162,6 +167,32 @@ class UGVApp:
         label = self.font.render("S", True, DARK_GREEN)
         self.screen.blit(label, (cx - 5, cy - 8))
 
+    def set_camera_frame(self, bgr_frame):
+        """Convert an OpenCV BGR frame to a pygame surface for display."""
+        if bgr_frame is None:
+            return
+        # Resize to panel size
+        import cv2
+        small = cv2.resize(bgr_frame, (CAMERA_PANEL_W, CAMERA_PANEL_H))
+        # BGR -> RGB and transpose for pygame (OpenCV is HxWxC, pygame wants WxH)
+        rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+        self._camera_surface = pygame.surfarray.make_surface(rgb.swapaxes(0, 1))
+
+    def draw_camera_panel(self):
+        """Draw the camera feed as a small overlay in the top-right corner."""
+        if self._camera_surface is None:
+            return
+        # Position: top-right with a small margin
+        x = self.width - CAMERA_PANEL_W - 6
+        y = 6
+        # Border
+        border_rect = pygame.Rect(x - 2, y - 2, CAMERA_PANEL_W + 4, CAMERA_PANEL_H + 4)
+        pygame.draw.rect(self.screen, BLACK, border_rect)
+        self.screen.blit(self._camera_surface, (x, y))
+        # Label
+        label = self.font.render("CAMERA", True, WHITE, BLACK)
+        self.screen.blit(label, (x, y + CAMERA_PANEL_H + 4))
+
     def render_run_frame(self):
         """Full render for run/test mode."""
         self.screen.fill(GRAY)
@@ -170,6 +201,7 @@ class UGVApp:
         self.draw_start_marker()
         self.draw_goal_marker()
         self.draw_agent()
+        self.draw_camera_panel()
         self.draw_info_bar()
         pygame.display.flip()
 

@@ -102,7 +102,9 @@ class RobotServer:
                         if vis._camera_ok:
                             ret, frame = vis.cap.read()
                             if ret and frame is not None:
-                                _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                                # Downscale on server side to reduce network payload
+                                frame = cv2.resize(frame, (320, 240))
+                                _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
                                 frame_b64 = base64.b64encode(buf).decode('ascii')
                     resp['frame'] = frame_b64
 

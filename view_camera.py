@@ -2,7 +2,7 @@
 
 Usage:
     python view_camera.py --ip <JETSON_IP>
-    python view_camera.py --ip 192.168.1.10 --port 5000
+    python view_camera.py --ip 192.168.1.10 --size 320x240
 
 Press Q to quit.
 """
@@ -16,19 +16,21 @@ def main():
     parser = argparse.ArgumentParser(description="View robot camera feed remotely")
     parser.add_argument("--ip", type=str, required=True, help="Jetson IP address")
     parser.add_argument("--port", type=int, default=5000, help="Server port")
+    parser.add_argument("--size", type=str, default="320x240",
+                        help="Display size WxH (default: 320x240)")
     args = parser.parse_args()
+
+    w, h = [int(x) for x in args.size.split("x")]
 
     robot = RemoteRobot(ip=args.ip, port=args.port)
 
-    print("Streaming camera feed. Press Q to quit.")
+    print(f"Streaming at {w}x{h}. Press Q to quit.")
     while True:
         frame = robot.get_frame()
         if frame is not None:
+            frame = cv2.resize(frame, (w, h))
             cv2.imshow("Robot Camera", frame)
-        else:
-            print("No frame received.")
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(30) & 0xFF == ord('q'):
             break
 
     robot.close()
