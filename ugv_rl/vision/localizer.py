@@ -67,12 +67,7 @@ class VisionLocalizer:
             self._use_new_api = False
 
         # --- Camera ---
-        self.cap = cv2.VideoCapture(camera_index)
-        if not self.cap.isOpened():
-            logger.warning("Camera %s could not be opened – vision disabled.", camera_index)
-            self._camera_ok = False
-        else:
-            self._camera_ok = True
+        self.cap, self._camera_ok = self._open_camera(camera_index)
 
         # Intrinsics (will be replaced if you calibrate)
         if camera_matrix is not None:
@@ -184,6 +179,40 @@ class VisionLocalizer:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _open_camera(camera_index):
+        """Try the requested index first, then auto-scan /dev/video0..9."""
+        # If a GStreamer pipeline string was passed, just try it directly
+        if isinstance(camera_index, str):
+            cap = cv2.VideoCapture(camera_index, cv2.CAP_GSTREAMER)
+            if cap.isOpened():
+                print(f"[Vision] Camera opened via GStreamer pipeline.")
+                return cap, True
+            print(f"[Vision] GStreamer pipeline failed.")
+            return cap, False
+
+        # Try the configured index first
+        if camera_index is not None:
+            cap = cv2.VideoCapture(camera_index)
+            if cap.isOpened():
+                print(f"[Vision] Camera opened at index {camera_index}.")
+                return cap, True
+            cap.release()
+
+        # Auto-scan indices 0..9
+        print("[Vision] Configured index failed – scanning for cameras...")
+        for idx in range(10):
+            cap = cv2.VideoCapture(idx)
+            if cap.isOpened():
+                ret, _ = cap.read()
+                if ret:
+                    print(f"[Vision] Camera found at index {idx}.")
+                    return cap, True
+                cap.release()
+
+        print("[Vision] No working camera found – vision disabled.")
+        return cv2.VideoCapture(), False
 
     def _load_marker_map(self, path: str):
         p = Path(path)

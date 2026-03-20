@@ -24,7 +24,7 @@ def main():
     vision_kwargs = {}
     if use_vision:
         vision_kwargs = {
-            'camera_index': vision_cfg.get('camera_index', 0),
+            'camera_index': vision_cfg.get('camera_index', 1),
             'marker_map_path': vision_cfg.get('marker_map_path', 'marker_map.json'),
             'cell_size': config['env'].get('cell_size', 0.5),
             'marker_size': vision_cfg.get('marker_size', 0.05),
