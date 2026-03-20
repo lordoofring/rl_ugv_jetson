@@ -5,3 +5,4 @@ pyyaml
 shimmy
 numpy
 pygame
+opencv-contrib-python
