@@ -42,7 +42,8 @@ class GridMapEnv(gym.Env):
     """
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self, config_path: str = 'config.yaml', robot: RobotInterface = None, map_layout: Optional[np.ndarray] = None):
+    def __init__(self, config_path: str = 'config.yaml', robot: RobotInterface = None,
+                 map_layout: Optional[np.ndarray] = None, randomize_positions: bool = False):
         super().__init__()
 
         with open(config_path, 'r') as f:
@@ -51,6 +52,7 @@ class GridMapEnv(gym.Env):
         self.grid_size = self.config['env'].get('grid_size', 10)
         self.cell_size = self.config['env'].get('cell_size', 1.0)
         self.max_steps = self.config['env'].get('max_steps', 200)
+        self.randomize_positions = randomize_positions
 
         # Discrete actions: 0=North, 1=South, 2=East, 3=West
         self.action_space = spaces.Discrete(4)
@@ -96,10 +98,32 @@ class GridMapEnv(gym.Env):
         self.goal_gx = int(round(goal[0] / self.cell_size))
         self.goal_gy = int(round(goal[1] / self.cell_size))
 
+    def _get_free_cells(self):
+        """Return list of (gx, gy) for all free cells."""
+        free = []
+        for gx in range(self.grid_size):
+            for gy in range(self.grid_size):
+                if self.map[gx, gy] == 0:
+                    free.append((gx, gy))
+        return free
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.steps = 0
         self.last_action = None
+
+        if self.randomize_positions:
+            free = self._get_free_cells()
+            # Pick two distinct free cells for start and goal
+            idx = self.np_random.choice(len(free), size=2, replace=False)
+            sgx, sgy = free[idx[0]]
+            ggx, ggy = free[idx[1]]
+
+            self.start_gx, self.start_gy = sgx, sgy
+            self.goal_gx, self.goal_gy = ggx, ggy
+
+            self.start_pos = np.array([sgx * self.cell_size, sgy * self.cell_size])
+            self.goal_pos = np.array([ggx * self.cell_size, ggy * self.cell_size])
 
         self.agent_gx = self.start_gx
         self.agent_gy = self.start_gy
@@ -142,7 +166,26 @@ class GridMapEnv(gym.Env):
             else:
                 # Execute physical turn + drive on real robot
                 self._execute_cardinal_move(self.agent_theta, self.cell_size)
-                # Sync dead reckoning back to intended grid position
+
+                # Try vision correction, fall back to intended grid position
+                vision_pose = None
+                if hasattr(self.robot, 'localize'):
+                    vision_pose = self.robot.localize()
+
+                if vision_pose is not None:
+                    vgx, vgy, vtheta = vision_pose
+                    # Clamp to grid bounds
+                    vgx = max(0, min(vgx, self.grid_size - 1))
+                    vgy = max(0, min(vgy, self.grid_size - 1))
+                    # Only accept if the cell is free
+                    if self.map[vgx, vgy] != 1:
+                        self.agent_gx = vgx
+                        self.agent_gy = vgy
+                        self.agent_theta = vtheta
+                        target_x = vgx * self.cell_size
+                        target_y = vgy * self.cell_size
+
+                # Sync dead reckoning to corrected position
                 self.robot.reset(target_x, target_y, self.agent_theta)
 
             reward = -0.1

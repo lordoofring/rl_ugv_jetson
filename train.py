@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--model', type=str, default=None, help='Path to model to load')
     parser.add_argument('--manual', action='store_true', help='Manual WASD control for calibration')
     parser.add_argument('--timesteps', type=int, default=100000, help='Total timesteps for training')
+    parser.add_argument('--vision', action='store_true', help='Enable ArUco vision localizer (real robot only)')
 
     args = parser.parse_args()
 
@@ -35,8 +36,21 @@ def main():
             print(f"Connecting to remote robot at {args.ip}...")
             robot = RemoteRobot(ip=args.ip)
         else:
-            print("Using local RealRobot...")
-            robot = RealRobot()
+            vision_cfg = config.get('vision', {})
+            use_vision = args.vision or vision_cfg.get('enabled', False)
+            vision_kwargs = {}
+            if use_vision:
+                vision_kwargs = {
+                    'camera_index': vision_cfg.get('camera_index', 0),
+                    'marker_map_path': vision_cfg.get('marker_map_path', 'marker_map.json'),
+                    'cell_size': config['env'].get('cell_size', 0.5),
+                    'marker_size': vision_cfg.get('marker_size', 0.05),
+                    'aruco_dict_name': vision_cfg.get('aruco_dict', 'DICT_4X4_50'),
+                }
+                print("Using local RealRobot with vision localizer...")
+            else:
+                print("Using local RealRobot...")
+            robot = RealRobot(use_vision=use_vision, vision_kwargs=vision_kwargs)
     else:
         robot = MockRobot()
 
@@ -54,8 +68,10 @@ def main():
     except FileNotFoundError:
         print("No map.json found, using empty grid.")
 
-    # Create environment
-    env = GridMapEnv(config_path='config.yaml', robot=robot, map_layout=map_layout)
+    # Create environment — randomize start/goal during training for generalization
+    randomize = args.train
+    env = GridMapEnv(config_path='config.yaml', robot=robot, map_layout=map_layout,
+                     randomize_positions=randomize)
 
     if start_pos is not None:
         env.set_map(map_layout, start_pos, goal_pos)
@@ -110,6 +126,8 @@ def main():
             if app:
                 app.trail = []
                 app.episode_num = episode_num
+                app.start_pos = [env.start_gx, env.start_gy]
+                app.goal_pos = [env.goal_gx, env.goal_gy]
                 app.trail.append((env.agent_gx, env.agent_gy))
 
             print(f"\n--- Episode {episode_num} ---")
@@ -179,7 +197,9 @@ def main():
         app.trail = [(env.agent_gx, env.agent_gy)]
         app.episode_num = 1
 
+        pygame.event.clear()
         print("\n--- Manual Control ---")
+        print("CLICK THE PYGAME WINDOW, then use W/A/S/D to move.")
         print("W=North  S=South  A=West  D=East  R=Reset  Q=Quit")
         print(f"Start: ({env.agent_gx}, {env.agent_gy})  Goal: ({env.goal_gx}, {env.goal_gy})")
 

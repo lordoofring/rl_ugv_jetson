@@ -12,6 +12,13 @@ env:
   pixels_per_cell: 60 # Visual size on screen (pixels). Decrease if map doesn't fit on screen.
   max_steps: 100
 
+vision:
+  enabled: false          # set true to use ArUco localizer on real robot
+  camera_index: 0         # /dev/video0 (or GStreamer pipeline string)
+  marker_map_path: "marker_map.json"
+  marker_size: 0.05       # printed marker side-length in meters
+  aruco_dict: "DICT_4X4_50"
+
 training:
   total_timesteps: 100000
   learning_rate: 0.0003

@@ -131,6 +131,7 @@ class UGVApp:
         lines = [
             f"Episode: {self.episode_num}  |  Step: {self.step_count}  |  Reward: {self.episode_reward:.1f}",
             f"Action: {self.action_name}  |  Cell: {self.agent_cell}",
+            "WASD to move  |  R=Reset  |  Q=Quit",
         ]
 
         if self.mode == 'edit':
