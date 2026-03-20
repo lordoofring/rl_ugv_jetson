@@ -49,13 +49,22 @@ class VisionLocalizer:
         self.cell_size = cell_size
         self.marker_size = marker_size
 
-        # --- ArUco setup ---
+        # --- ArUco setup (supports both OpenCV 4.7+ and older versions) ---
         dict_id = getattr(cv2.aruco, aruco_dict_name, None)
         if dict_id is None:
             raise ValueError(f"Unknown ArUco dictionary: {aruco_dict_name}")
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(dict_id)
-        self.aruco_params = cv2.aruco.DetectorParameters()
-        self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+
+        # New API (OpenCV 4.7+): ArucoDetector class
+        # Old API (OpenCV <4.7): DetectorParameters_create() function
+        if hasattr(cv2.aruco, 'ArucoDetector'):
+            self.aruco_params = cv2.aruco.DetectorParameters()
+            self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+            self._use_new_api = True
+        else:
+            self.aruco_params = cv2.aruco.DetectorParameters_create()
+            self.detector = None
+            self._use_new_api = False
 
         # --- Camera ---
         self.cap = cv2.VideoCapture(camera_index)
@@ -179,7 +188,11 @@ class VisionLocalizer:
     def _detect_markers(self, frame: np.ndarray):
         """Return list of (marker_id, tvec, rvec) for all detected markers."""
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        corners, ids, _ = self.detector.detectMarkers(gray)
+
+        if self._use_new_api:
+            corners, ids, _ = self.detector.detectMarkers(gray)
+        else:
+            corners, ids, _ = cv2.aruco.detectMarkers(gray, self.aruco_dict, parameters=self.aruco_params)
 
         if ids is None or len(ids) == 0:
             return []
