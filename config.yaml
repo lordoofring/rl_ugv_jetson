@@ -13,11 +13,19 @@ env:
   max_steps: 100
 
 vision:
-  enabled: false          # set true to use ArUco localizer on real robot
-  camera_index: 1        # -1 = auto-detect camera (recommended for Jetson)
+  enabled: true         # set true to use ArUco localizer on real robot
+  camera_index: 0        # -1 = auto-detect camera (recommended for Jetson)
   marker_map_path: "marker_map.json"
   marker_size: 0.05       # printed marker side-length in meters
   aruco_dict: "DICT_4X4_50"
+
+ball_push:
+  arena_size: 2.0       # square side length in meters
+  ball_radius: 0.05     # ball radius in meters
+  step_dist: 0.05       # forward move distance in meters
+  push_radius: 0.12     # robot-ball contact distance
+  robot_radius: 0.12    # approximate robot body radius
+  max_steps: 500
 
 training:
   total_timesteps: 100000
