@@ -22,7 +22,13 @@ parser.add_argument("--scene", type=str, default="/workspace/ball_push_scene.usd
 args = parser.parse_args()
 
 from isaacsim import SimulationApp
-app = SimulationApp({"headless": args.headless, "width": 1280, "height": 720})
+
+sim_config = {"headless": True}
+if not args.headless:
+    sim_config = {"headless": False, "width": 1280, "height": 720}
+# On HPC without display, force headless + no renderer
+sim_config["open_usd"] = False
+app = SimulationApp(sim_config)
 
 import numpy as np
 import omni.usd
