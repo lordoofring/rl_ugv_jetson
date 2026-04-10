@@ -25,9 +25,9 @@ class FrameObserver:
         frame_width: int = 640,
         frame_height: int = 480,
         # Red ball HSV ranges (red wraps around in HSV)
-        ball_hsv_low1=(0, 100, 80),
+        ball_hsv_low1=(25, 100, 80),
         ball_hsv_high1=(10, 255, 255),
-        ball_hsv_low2=(170, 100, 80),
+        ball_hsv_low2=(165, 100, 80),
         ball_hsv_high2=(180, 255, 255),
         # Blue tape HSV range
         tape_hsv_low=(90, 80, 50),

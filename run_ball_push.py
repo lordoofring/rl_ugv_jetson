@@ -16,12 +16,15 @@ import sys
 import cv2
 import numpy as np
 import yaml
-#from stable_baselines3 import PPO
+from stable_baselines3 import PPO
 from ugv_rl.vision.frame_observer import FrameObserver
 
 TURN_ANGLE_DEG = 5.0
 STEP_DIST = 0.05
 ACTION_NAMES = {0: "Rot L", 1: "Rot R", 2: "Fwd"}
+
+
+MIN_CMD_TIME = 0.25  # seconds — minimum motor pulse so hardware actually responds
 
 
 def execute_action(robot, action, config):
@@ -33,16 +36,16 @@ def execute_action(robot, action, config):
     if action == 0:
         w = tws / (wb / 2.0)
         robot.move(0.0, w)
-        time.sleep(t90 * TURN_ANGLE_DEG / 90.0)
+        time.sleep(max(t90 * TURN_ANGLE_DEG / 90.0, MIN_CMD_TIME))
         robot.stop()
     elif action == 1:
         w = tws / (wb / 2.0)
         robot.move(0.0, -w)
-        time.sleep(t90 * TURN_ANGLE_DEG / 90.0)
+        time.sleep(max(t90 * TURN_ANGLE_DEG / 90.0, MIN_CMD_TIME))
         robot.stop()
     elif action == 2:
         robot.move(ms, 0.0)
-        time.sleep(STEP_DIST / ms)
+        time.sleep(max(STEP_DIST / ms, MIN_CMD_TIME))
         robot.stop()
 
 
