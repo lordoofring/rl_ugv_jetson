@@ -25,6 +25,7 @@ ball_push:
   step_dist: 0.05       # forward move distance in meters
   push_radius: 0.10     # robot-ball contact distance
   robot_radius: 0.12    # approximate robot body radius
+  fov_half_deg: 30        # half FOV in degrees (60° total, matching cropped camera)
   max_steps: 500
 
 training:

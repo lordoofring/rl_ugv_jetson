@@ -48,12 +48,19 @@ class FrameObserver:
         self.tape_hsv_low = np.array(tape_hsv_low)
         self.tape_hsv_high = np.array(tape_hsv_high)
 
+    def _crop_center(self, frame: np.ndarray) -> np.ndarray:
+        """Crop the center portion of the frame to narrow the effective FOV."""
+        h, w = frame.shape[:2]
+        margin = w // 4  # keep center 50% of width
+        return frame[:, margin:w - margin]
+
     def observe(self, frame: np.ndarray) -> Optional[np.ndarray]:
         """Extract [ball_dist, ball_angle, gap_dist, gap_angle] from a BGR frame.
 
         Returns:
             4-element float32 array, or None if ball not visible.
         """
+        frame = self._crop_center(frame)
         ball = self._detect_ball(frame)
         if ball is None:
             return None
@@ -136,6 +143,7 @@ class FrameObserver:
 
     def annotate_frame(self, frame: np.ndarray) -> np.ndarray:
         """Draw detections on the frame for debugging. Returns annotated copy."""
+        frame = self._crop_center(frame)
         vis = frame.copy()
 
         ball = self._detect_ball(frame)

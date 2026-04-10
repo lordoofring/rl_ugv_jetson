@@ -1,8 +1,9 @@
 """
-Ball Push Environment.
+Ball Push Environment (Pure RL with FOV).
 
 The agent must push a red ball outside a square boundary.
-Observation is ego-centric (relative to the robot) — no global position needed.
+The ball is only visible when within the robot's field of view.
+The agent must learn to search, align, approach, and push — no hardcoded overrides.
 
 Actions:
     0 = Rotate left 5°
@@ -31,23 +32,25 @@ TURN_ANGLE = math.radians(5)  # 5 degrees per turn action
 
 class BallPushEnv(gym.Env):
     """
-    Continuous 2D environment where the robot pushes a ball out of a square region.
+    2D ball push with realistic FOV constraints.
 
-    The square is centered at the origin with side length `arena_size`.
-    The ball and robot start at random positions inside the square.
+    The robot can only observe the ball when it falls within a limited
+    field of view (default ±30°). When the ball is outside the FOV,
+    the observation is zeroed out and a flag indicates "not visible".
 
-    Observation (4-dim, matches FrameObserver on the real robot):
-        [ball_dist, ball_angle, gap_dist, gap_angle]
+    Observation (5-dim):
+        [ball_visible, ball_dist, ball_angle, gap_dist, gap_angle]
 
-    - ball_dist:  distance robot→ball in meters
-    - ball_angle: bearing to ball relative to heading, radians (-π..π)
-    - gap_dist:   distance ball→nearest edge, normalized to [0, 1]
-    - gap_angle:  direction from ball to nearest edge relative to heading (-π..π)
+        ball_visible: 1.0 if ball is in FOV, 0.0 if not
+        ball_dist:    distance to ball (0 if not visible)
+        ball_angle:   bearing to ball relative to heading (0 if not visible)
+        gap_dist:     ball-to-edge normalized [0,1] (0 if not visible)
+        gap_angle:    direction ball→edge relative to heading (0 if not visible)
 
     Actions (Discrete 3):
         0 = rotate left 5°
         1 = rotate right 5°
-        2 = move forward `step_dist` meters
+        2 = move forward
     """
 
     metadata = {"render.modes": ["human"]}
@@ -59,27 +62,29 @@ class BallPushEnv(gym.Env):
             self.config = yaml.safe_load(f)
 
         bp_cfg = self.config.get("ball_push", {})
-        self.arena_size = bp_cfg.get("arena_size", 2.0)       # side length in meters
-        self.ball_radius = bp_cfg.get("ball_radius", 0.05)    # ball radius in meters
-        self.step_dist = bp_cfg.get("step_dist", 0.05)        # forward move distance
-        self.push_radius = bp_cfg.get("push_radius", 0.12)    # robot-ball contact distance
+        self.arena_size = bp_cfg.get("arena_size", 2.0)
+        self.ball_radius = bp_cfg.get("ball_radius", 0.015)
+        self.step_dist = bp_cfg.get("step_dist", 0.05)
+        self.push_radius = bp_cfg.get("push_radius", 0.12)
         self.max_steps = bp_cfg.get("max_steps", 500)
-        self.robot_radius = bp_cfg.get("robot_radius", 0.12)  # approximate robot body radius
+        self.robot_radius = bp_cfg.get("robot_radius", 0.12)
+
+        # FOV half-angle in radians (±30° = 60° total, matching cropped camera)
+        self.fov_half = math.radians(bp_cfg.get("fov_half_deg", 30))
 
         self.half_arena = self.arena_size / 2.0
 
-        # Action space: rotate left, rotate right, forward
         self.action_space = spaces.Discrete(3)
 
-        # Observation: [ball_dist, ball_angle, gap_dist, gap_angle]
-        # Matches FrameObserver output for sim-to-real transfer
+        # Observation: [ball_visible, ball_dist, ball_angle, gap_dist, gap_angle]
         obs_high = np.array([
-            self.arena_size * 1.5,    # ball_dist (max ~ diagonal)
-            math.pi,                  # ball_angle (-π to π)
-            1.0,                      # gap_dist (normalized 0..1)
-            math.pi,                  # gap_angle (-π to π)
+            1.0,                      # ball_visible (0 or 1)
+            self.arena_size * 1.5,    # ball_dist
+            math.pi,                  # ball_angle
+            1.0,                      # gap_dist
+            math.pi,                  # gap_angle
         ], dtype=np.float32)
-        obs_low = np.array([0.0, -math.pi, 0.0, -math.pi], dtype=np.float32)
+        obs_low = np.array([0.0, 0.0, -math.pi, 0.0, -math.pi], dtype=np.float32)
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
         self.robot = robot if robot else MockRobot()
@@ -98,18 +103,15 @@ class BallPushEnv(gym.Env):
         self.steps = 0
         self.last_action = None
 
-        # Random robot position inside the arena (with margin)
         margin = self.robot_radius + 0.05
         self.robot_x = self.np_random.uniform(-self.half_arena + margin, self.half_arena - margin)
         self.robot_y = self.np_random.uniform(-self.half_arena + margin, self.half_arena - margin)
         self.robot_theta = self.np_random.uniform(-math.pi, math.pi)
 
-        # Random ball position inside the arena (with margin from edges so it's not trivial)
         ball_margin = self.ball_radius + 0.1
         self.ball_x = self.np_random.uniform(-self.half_arena + ball_margin, self.half_arena - ball_margin)
         self.ball_y = self.np_random.uniform(-self.half_arena + ball_margin, self.half_arena - ball_margin)
 
-        # Ensure ball isn't spawned right on top of robot
         while self._dist_robot_to_ball() < self.push_radius * 2:
             self.ball_x = self.np_random.uniform(-self.half_arena + ball_margin, self.half_arena - ball_margin)
             self.ball_y = self.np_random.uniform(-self.half_arena + ball_margin, self.half_arena - ball_margin)
@@ -131,71 +133,85 @@ class BallPushEnv(gym.Env):
         elif action == ACTION_RIGHT:
             self.robot_theta -= TURN_ANGLE
         elif action == ACTION_FORWARD:
-            new_x = self.robot_x + math.cos(self.robot_theta) * self.step_dist
-            new_y = self.robot_y + math.sin(self.robot_theta) * self.step_dist
-            self.robot_x = new_x
-            self.robot_y = new_y
+            self.robot_x += math.cos(self.robot_theta) * self.step_dist
+            self.robot_y += math.sin(self.robot_theta) * self.step_dist
 
-        # Normalize theta
         self.robot_theta = (self.robot_theta + math.pi) % (2 * math.pi) - math.pi
 
-        # Check if robot pushes the ball
         self._apply_push()
 
-        # Check if ball is outside the arena
         ball_outside = self._ball_is_outside()
         curr_ball_dist = self._dist_robot_to_ball()
         curr_ball_edge_dist = self._ball_to_nearest_edge()
+        ball_visible = self._ball_in_fov()
+        robot_edge_dist = self._robot_to_nearest_edge()
 
         # --- Reward ---
         reward = -0.01  # step penalty
 
-        # Reward for getting closer to the ball (approach shaping)
-        approach_progress = prev_ball_dist - curr_ball_dist
-        reward += approach_progress * 5.0
+        # Approach: reward getting closer to ball
+        approach = prev_ball_dist - curr_ball_dist
+        reward += approach * 5.0
 
-        # Reward for pushing ball closer to edge (push shaping)
+        # Push: reward pushing ball toward edge
         edge_progress = prev_ball_edge_dist - curr_ball_edge_dist
         reward += edge_progress * 10.0
 
-        # Big reward for getting the ball out
+        # Ball out = success
         if ball_outside:
             reward += 100.0
 
-        # Penalty if robot leaves the arena
+        # Robot too close to boundary — graduated penalty
+        if robot_edge_dist < 0.1:
+            reward -= 2.0
+        # Robot leaves arena — harsh penalty + end episode
         robot_outside = (abs(self.robot_x) > self.half_arena or
                          abs(self.robot_y) > self.half_arena)
         if robot_outside:
-            reward -= 5.0
+            reward -= 10.0
 
-        done = ball_outside or self.steps >= self.max_steps
+        # Small penalty when ball not in FOV — encourages searching
+        if not ball_visible:
+            reward -= 0.02
+
+        done = ball_outside or robot_outside or self.steps >= self.max_steps
 
         info = {
             "ball_pos": (self.ball_x, self.ball_y),
             "robot_pos": (self.robot_x, self.robot_y),
             "ball_outside": ball_outside,
+            "ball_visible": ball_visible,
             "action": ACTION_NAMES.get(action, "?"),
         }
 
         return self._get_obs(), reward, done, False, info
 
     # ------------------------------------------------------------------
+    # FOV
+    # ------------------------------------------------------------------
+
+    def _ball_in_fov(self):
+        """Check if ball is within the robot's field of view."""
+        dx = self.ball_x - self.robot_x
+        dy = self.ball_y - self.robot_y
+        ball_world_angle = math.atan2(dy, dx)
+        rel_angle = ball_world_angle - self.robot_theta
+        rel_angle = (rel_angle + math.pi) % (2 * math.pi) - math.pi
+        return abs(rel_angle) <= self.fov_half
+
+    # ------------------------------------------------------------------
     # Physics
     # ------------------------------------------------------------------
 
     def _apply_push(self):
-        """If robot is close enough to the ball, push it away."""
         dist = self._dist_robot_to_ball()
         if dist < self.push_radius:
-            # Push direction: from robot center to ball center
             dx = self.ball_x - self.robot_x
             dy = self.ball_y - self.robot_y
             if dist > 1e-6:
                 nx, ny = dx / dist, dy / dist
             else:
                 nx, ny = math.cos(self.robot_theta), math.sin(self.robot_theta)
-
-            # Push the ball so it's just outside the contact radius
             push_dist = self.push_radius - dist + self.step_dist * 0.5
             self.ball_x += nx * push_dist
             self.ball_y += ny * push_dist
@@ -209,7 +225,6 @@ class BallPushEnv(gym.Env):
                          (self.robot_y - self.ball_y) ** 2)
 
     def _ball_to_nearest_edge(self):
-        """Shortest distance from ball center to any arena edge."""
         return min(
             self.half_arena - abs(self.ball_x),
             self.half_arena - abs(self.ball_y),
@@ -226,8 +241,6 @@ class BallPushEnv(gym.Env):
         )
 
     def _nearest_edge_angle_from_ball(self):
-        """Angle from robot to the point on the nearest edge closest to the ball."""
-        # Find which edge is closest to the ball
         dists = {
             "right": self.half_arena - self.ball_x,
             "left": self.half_arena + self.ball_x,
@@ -236,7 +249,6 @@ class BallPushEnv(gym.Env):
         }
         nearest = min(dists, key=dists.get)
 
-        # Target point: project ball onto that edge
         if nearest == "right":
             tx, ty = self.half_arena, self.ball_y
         elif nearest == "left":
@@ -246,7 +258,6 @@ class BallPushEnv(gym.Env):
         else:
             tx, ty = self.ball_x, -self.half_arena
 
-        # Angle from robot to that target point, relative to robot heading
         world_angle = math.atan2(ty - self.robot_y, tx - self.robot_x)
         rel_angle = world_angle - self.robot_theta
         rel_angle = (rel_angle + math.pi) % (2 * math.pi) - math.pi
@@ -257,7 +268,6 @@ class BallPushEnv(gym.Env):
     # ------------------------------------------------------------------
 
     def _get_obs(self):
-        # Ball distance and angle relative to robot
         dx = self.ball_x - self.robot_x
         dy = self.ball_y - self.robot_y
         ball_dist = math.sqrt(dx * dx + dy * dy)
@@ -265,20 +275,27 @@ class BallPushEnv(gym.Env):
         ball_angle = ball_world_angle - self.robot_theta
         ball_angle = (ball_angle + math.pi) % (2 * math.pi) - math.pi
 
-        # gap_dist: ball-to-nearest-edge normalized to [0, 1]
-        # Matches FrameObserver which normalizes pixel gap by frame diagonal
-        ball_to_edge = self._ball_to_nearest_edge()
-        gap_dist = np.clip(ball_to_edge / self.half_arena, 0.0, 1.0)
+        if self._ball_in_fov():
+            ball_to_edge = self._ball_to_nearest_edge()
+            gap_dist = np.clip(ball_to_edge / self.half_arena, 0.0, 1.0)
+            gap_angle = self._nearest_edge_angle_from_ball()
 
-        # gap_angle: direction from ball to nearest edge, relative to robot heading
-        gap_angle = self._nearest_edge_angle_from_ball()
+            obs = np.array([
+                1.0,           # ball_visible
+                ball_dist,
+                ball_angle,
+                gap_dist,
+                gap_angle,
+            ], dtype=np.float32)
+        else:
+            obs = np.array([
+                0.0,           # ball NOT visible
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ], dtype=np.float32)
 
-        obs = np.array([
-            ball_dist,
-            ball_angle,
-            gap_dist,
-            gap_angle,
-        ], dtype=np.float32)
         return obs
 
     def render(self, mode="human"):

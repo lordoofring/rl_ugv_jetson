@@ -1,9 +1,9 @@
 """
-Deploy the Ball Push policy on the real robot.
+Deploy the Ball Push policy on the real robot (pure RL — no overrides).
 
 Usage:
-    python run_ball_push.py --model ball_push_camera --ip <JETSON_IP>
-    python run_ball_push.py --model ball_push_camera --local
+    python run_ball_push.py --model ball_push_ppo_final --ip <JETSON_IP>
+    python run_ball_push.py --model ball_push_ppo_final --local
     python run_ball_push.py --calibrate --ip <JETSON_IP>
 
 Controls: Q=quit, SPACE=pause/resume, R=reset
@@ -23,21 +23,30 @@ TURN_ANGLE_DEG = 5.0
 STEP_DIST = 0.05
 ACTION_NAMES = {0: "Rot L", 1: "Rot R", 2: "Fwd"}
 
+MIN_CMD_TIME = 0.25
+
 
 def send_action(robot, action, config):
-    """Send movement command without blocking. No sleep, no stop — just set velocity."""
+    """Send movement command, hold for MIN_CMD_TIME, then stop."""
     wb = config["robot"].get("wheel_base", 0.175)
     tws = config["robot"].get("turn_wheel_speed", 0.3)
+    t90 = config["robot"].get("turn_time_90", 1.0)
     ms = config["robot"].get("max_speed", 0.5)
 
     if action == 0:
         w = tws / (wb / 2.0)
         robot.move(0.0, w)
+        time.sleep(max(t90 * TURN_ANGLE_DEG / 90.0, MIN_CMD_TIME))
+        robot.stop()
     elif action == 1:
         w = tws / (wb / 2.0)
         robot.move(0.0, -w)
+        time.sleep(max(t90 * TURN_ANGLE_DEG / 90.0, MIN_CMD_TIME))
+        robot.stop()
     elif action == 2:
         robot.move(ms, 0.0)
+        time.sleep(max(STEP_DIST / ms, MIN_CMD_TIME))
+        robot.stop()
 
 
 def run_calibration(get_frame, observer):
@@ -62,15 +71,13 @@ def run_calibration(get_frame, observer):
 
 
 def run_policy(get_frame, robot, model, observer, config):
-    print("\n--- Running Policy ---")
+    print("\n--- Running Policy (Pure RL) ---")
     print("Q=quit, SPACE=pause, R=reset\n")
     paused = False
     steps = 0
-    missed_frames = 0
-    GRACE_FRAMES = 8  # ignore this many missed frames before searching
 
     logfile = open("policy_log.txt", "w")
-    logfile.write("step,action,ball_dist,ball_angle,gap_dist,gap_angle\n")
+    logfile.write("step,action,visible,ball_dist,ball_angle,gap_dist,gap_angle\n")
 
     while True:
         frame = get_frame()
@@ -78,8 +85,15 @@ def run_policy(get_frame, robot, model, observer, config):
             time.sleep(0.05)
             continue
 
-        obs = observer.observe(frame)
         vis = observer.annotate_frame(frame)
+        raw_obs = observer.observe(frame)
+
+        # Build the 5-dim observation matching the sim env
+        if raw_obs is not None:
+            # FrameObserver returns [ball_dist, ball_angle, gap_dist, gap_angle]
+            obs = np.array([1.0, raw_obs[0], raw_obs[1], raw_obs[2], raw_obs[3]], dtype=np.float32)
+        else:
+            obs = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
         key = cv2.waitKey(30) & 0xFF
         if key == ord("q"):
@@ -89,7 +103,6 @@ def run_policy(get_frame, robot, model, observer, config):
             print("PAUSED" if paused else "RESUMED")
         elif key == ord("r"):
             steps = 0
-            missed_frames = 0
             print("--- Reset ---")
 
         if paused:
@@ -99,42 +112,22 @@ def run_policy(get_frame, robot, model, observer, config):
             cv2.imshow("Ball Push", vis)
             continue
 
-        # No ball visible — wait a bit, then search
-        if obs is None:
-            missed_frames += 1
-            if missed_frames <= GRACE_FRAMES:
-                robot.stop()
-                cv2.putText(vis, f"LOST BALL ({missed_frames}/{GRACE_FRAMES})", (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
-                cv2.imshow("Ball Push", vis)
-            else:
-                cv2.putText(vis, "SEARCHING...", (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-                cv2.imshow("Ball Push", vis)
-                send_action(robot, 0, config)
-                logfile.write(f"{steps},SEARCH,,,,\n")
-                logfile.flush()
-            continue
-
-        # Ball found — reset grace counter
-        missed_frames = 0
-
-        # Ball visible — run the policy
+        # Policy decides everything — search, align, approach, push
         action, _ = model.predict(obs, deterministic=True)
         action = int(action)
 
-        # Clamp rotations: don't rotate the ball out of view
-        ball_angle = obs[1]
-        if action == 0 and ball_angle > 0.4:   # ball is left, don't rotate further left
-            action = 2
-        elif action == 1 and ball_angle < -0.4:  # ball is right, don't rotate further right
-            action = 2
-
-        logfile.write(f"{steps},{ACTION_NAMES[action]},{obs[0]:.4f},{obs[1]:.4f},{obs[2]:.4f},{obs[3]:.4f}\n")
+        visible = "Y" if obs[0] > 0.5 else "N"
+        logfile.write(f"{steps},{ACTION_NAMES[action]},{visible},{obs[1]:.4f},{obs[2]:.4f},{obs[3]:.4f},{obs[4]:.4f}\n")
         logfile.flush()
 
-        cv2.putText(vis, f"{ACTION_NAMES[action]} step:{steps} gap:{obs[2]:.2f}",
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        label = f"{ACTION_NAMES[action]} step:{steps}"
+        if obs[0] > 0.5:
+            label += f" d:{obs[1]:.2f} a:{math.degrees(obs[2]):.0f}"
+            color = (0, 255, 0)
+        else:
+            label += " [blind]"
+            color = (0, 0, 255)
+        cv2.putText(vis, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         cv2.imshow("Ball Push", vis)
 
         send_action(robot, action, config)
@@ -148,7 +141,7 @@ def run_policy(get_frame, robot, model, observer, config):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="ball_push_camera")
+    parser.add_argument("--model", type=str, default="ball_push_ppo_final")
     parser.add_argument("--ip", type=str, default=None)
     parser.add_argument("--local", action="store_true")
     parser.add_argument("--calibrate", action="store_true")
@@ -184,7 +177,7 @@ def main():
 
     bp = config.get("ball_push", {})
     observer = FrameObserver(
-        ball_real_diameter=bp.get("ball_radius", 0.015) * 2,  # 3cm default
+        ball_real_diameter=bp.get("ball_radius", 0.015) * 2,
     )
 
     if args.calibrate:
