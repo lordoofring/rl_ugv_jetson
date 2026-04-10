@@ -1,12 +1,11 @@
 """
-HSV Tuner — adjust sliders until ONLY the red ball is white in the mask.
+HSV Tuner — adjust sliders to isolate the red ball.
 
 Usage:
-    python tune_hsv.py --ip <JETSON_IP>       # stream from Jetson
-    python tune_hsv.py --camera 0             # local camera
+    python tune_hsv.py --ip <JETSON_IP>
+    python tune_hsv.py --camera 0
 
-Once tuned, copy the printed values into FrameObserver or config.yaml.
-Press S to save current values, Q to quit.
+Controls: Q = quit, S = save values to terminal
 """
 
 import argparse
@@ -16,6 +15,62 @@ import numpy as np
 
 def nothing(x):
     pass
+
+
+SLIDER_NAMES = [
+    ("H1 Low",  0),
+    ("H1 High", 10),
+    ("H2 Low",  170),
+    ("H2 High", 180),
+    ("S Low",   100),
+    ("S High",  255),
+    ("V Low",   80),
+    ("V High",  255),
+]
+
+PANEL_W = 300
+PANEL_H = 480
+
+
+def draw_panel(sliders):
+    """Draw a dark panel with slider names and current values as readable text."""
+    panel = np.zeros((PANEL_H, PANEL_W, 3), dtype=np.uint8)
+    panel[:] = (40, 40, 40)
+
+    cv2.putText(panel, "HSV TUNER", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
+    cv2.putText(panel, "Adjust until ball = white in mask", (10, 55),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
+
+    y = 90
+    colors = {
+        "H1": (0, 180, 255),   # orange - hue range 1
+        "H2": (0, 130, 255),   # dark orange - hue range 2
+        "S":  (0, 255, 180),   # green - saturation
+        "V":  (255, 200, 100), # blue - value/brightness
+    }
+
+    for name, val in sliders:
+        prefix = name.split(" ")[0]
+        color = colors.get(prefix, (255, 255, 255))
+
+        cv2.putText(panel, f"{name}:", (10, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1)
+        cv2.putText(panel, f"{val}", (200, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+
+        # Draw a small bar showing the value
+        max_val = 180 if name.startswith("H") else 255
+        bar_w = int((val / max_val) * 250)
+        cv2.rectangle(panel, (10, y + 5), (10 + bar_w, y + 15), color, -1)
+        cv2.rectangle(panel, (10, y + 5), (260, y + 15), (80, 80, 80), 1)
+
+        y += 45
+
+    cv2.putText(panel, "S=save  Q=quit", (10, PANEL_H - 15),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1)
+
+    return panel
 
 
 def main():
@@ -44,23 +99,17 @@ def main():
         print("Specify --ip <JETSON_IP> or --camera <INDEX>")
         return
 
-    cv2.namedWindow("HSV Tuner")
-    cv2.namedWindow("Mask")
+    # Create slider window (wide enough to show labels)
+    win = "Sliders"
+    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(win, 600, 350)
 
-    # Red wraps around in HSV, so we have two ranges.
-    # Range 1: low hue (0-10ish)
-    cv2.createTrackbar("H1 Low", "HSV Tuner", 0, 180, nothing)
-    cv2.createTrackbar("H1 High", "HSV Tuner", 10, 180, nothing)
-    # Range 2: high hue (170-180ish)
-    cv2.createTrackbar("H2 Low", "HSV Tuner", 170, 180, nothing)
-    cv2.createTrackbar("H2 High", "HSV Tuner", 180, 180, nothing)
-    # Shared S and V
-    cv2.createTrackbar("S Low", "HSV Tuner", 100, 255, nothing)
-    cv2.createTrackbar("S High", "HSV Tuner", 255, 255, nothing)
-    cv2.createTrackbar("V Low", "HSV Tuner", 80, 255, nothing)
-    cv2.createTrackbar("V High", "HSV Tuner", 255, 255, nothing)
+    for name, default in SLIDER_NAMES:
+        max_val = 180 if name.startswith("H") else 255
+        cv2.createTrackbar(name, win, default, max_val, nothing)
 
-    print("\nAdjust sliders until ONLY the ball is white in the Mask window.")
+    print("\n=== HSV Tuner ===")
+    print("Adjust sliders until ONLY the ball is white in the mask.")
     print("S = save values, Q = quit\n")
 
     while True:
@@ -70,52 +119,70 @@ def main():
 
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        h1l = cv2.getTrackbarPos("H1 Low", "HSV Tuner")
-        h1h = cv2.getTrackbarPos("H1 High", "HSV Tuner")
-        h2l = cv2.getTrackbarPos("H2 Low", "HSV Tuner")
-        h2h = cv2.getTrackbarPos("H2 High", "HSV Tuner")
-        sl = cv2.getTrackbarPos("S Low", "HSV Tuner")
-        sh = cv2.getTrackbarPos("S High", "HSV Tuner")
-        vl = cv2.getTrackbarPos("V Low", "HSV Tuner")
-        vh = cv2.getTrackbarPos("V High", "HSV Tuner")
+        # Read slider values
+        vals = {}
+        for name, _ in SLIDER_NAMES:
+            vals[name] = cv2.getTrackbarPos(name, win)
 
-        mask1 = cv2.inRange(hsv, np.array([h1l, sl, vl]), np.array([h1h, sh, vh]))
-        mask2 = cv2.inRange(hsv, np.array([h2l, sl, vl]), np.array([h2h, sh, vh]))
+        # Build masks
+        mask1 = cv2.inRange(
+            hsv,
+            np.array([vals["H1 Low"],  vals["S Low"],  vals["V Low"]]),
+            np.array([vals["H1 High"], vals["S High"], vals["V High"]]),
+        )
+        mask2 = cv2.inRange(
+            hsv,
+            np.array([vals["H2 Low"],  vals["S Low"],  vals["V Low"]]),
+            np.array([vals["H2 High"], vals["S High"], vals["V High"]]),
+        )
         mask = mask1 | mask2
+        mask = cv2.erode(mask, None, iterations=2)
+        mask = cv2.dilate(mask, None, iterations=2)
 
-        mask_clean = cv2.erode(mask, None, iterations=2)
-        mask_clean = cv2.dilate(mask_clean, None, iterations=2)
-
-        # Show contour on original frame
+        # Draw detection on camera feed
         vis = frame.copy()
-        contours, _ = cv2.findContours(mask_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if contours:
             largest = max(contours, key=cv2.contourArea)
             ((cx, cy), radius) = cv2.minEnclosingCircle(largest)
             if radius > 3:
                 cv2.circle(vis, (int(cx), int(cy)), int(radius), (0, 255, 0), 2)
-                cv2.putText(vis, f"r={radius:.0f}px", (int(cx+radius+5), int(cy)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                cv2.putText(vis, "BALL", (int(cx - 20), int(cy - radius - 10)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-        # Show HSV value at center of frame (helps understand lighting)
-        ch, cw = frame.shape[:2]
-        center_hsv = hsv[ch//2, cw//2]
-        cv2.putText(vis, f"Center HSV: {center_hsv}", (10, 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+        # Build the info panel with labeled values
+        slider_vals = [(name, vals[name]) for name, _ in SLIDER_NAMES]
+        panel = draw_panel(slider_vals)
 
-        cv2.imshow("HSV Tuner", vis)
-        cv2.imshow("Mask", mask_clean)
+        # Resize panel height to match camera frame
+        h_frame = vis.shape[0]
+        panel_resized = cv2.resize(panel, (PANEL_W, h_frame))
+
+        # Combine: camera feed + panel side by side
+        combined = np.hstack([vis, panel_resized])
+
+        # Mask view (resize to match)
+        mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
+        cv2.imshow("Camera + HSV Info", combined)
+        cv2.imshow("Mask (ball = white)", mask_bgr)
 
         key = cv2.waitKey(30) & 0xFF
         if key == ord("q"):
             break
         elif key == ord("s"):
-            print(f"\n--- Saved HSV Values ---")
-            print(f"ball_hsv_low1=({h1l}, {sl}, {vl}),")
-            print(f"ball_hsv_high1=({h1h}, {sh}, {vh}),")
-            print(f"ball_hsv_low2=({h2l}, {sl}, {vl}),")
-            print(f"ball_hsv_high2=({h2h}, {sh}, {vh}),")
-            print(f"------------------------\n")
+            h1l, h1h = vals["H1 Low"], vals["H1 High"]
+            h2l, h2h = vals["H2 Low"], vals["H2 High"]
+            sl, sh = vals["S Low"], vals["S High"]
+            vl, vh = vals["V Low"], vals["V High"]
+            print(f"\n{'='*45}")
+            print(f"  COPY INTO FrameObserver __init__:")
+            print(f"{'='*45}")
+            print(f"  ball_hsv_low1=({h1l}, {sl}, {vl}),")
+            print(f"  ball_hsv_high1=({h1h}, {sh}, {vh}),")
+            print(f"  ball_hsv_low2=({h2l}, {sl}, {vl}),")
+            print(f"  ball_hsv_high2=({h2h}, {sh}, {vh}),")
+            print(f"{'='*45}\n")
 
     cv2.destroyAllWindows()
     if cap:
