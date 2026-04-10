@@ -123,6 +123,7 @@ class BallPushEnv(gym.Env):
         action = int(action)
         self.last_action = action
 
+        prev_ball_dist = self._dist_robot_to_ball()
         prev_ball_edge_dist = self._ball_to_nearest_edge()
 
         if action == ACTION_LEFT:
@@ -143,12 +144,17 @@ class BallPushEnv(gym.Env):
 
         # Check if ball is outside the arena
         ball_outside = self._ball_is_outside()
+        curr_ball_dist = self._dist_robot_to_ball()
         curr_ball_edge_dist = self._ball_to_nearest_edge()
 
         # --- Reward ---
         reward = -0.01  # step penalty
 
-        # Reward for pushing ball closer to edge
+        # Reward for getting closer to the ball (approach shaping)
+        approach_progress = prev_ball_dist - curr_ball_dist
+        reward += approach_progress * 5.0
+
+        # Reward for pushing ball closer to edge (push shaping)
         edge_progress = prev_ball_edge_dist - curr_ball_edge_dist
         reward += edge_progress * 10.0
 
