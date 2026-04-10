@@ -24,32 +24,20 @@ STEP_DIST = 0.05
 ACTION_NAMES = {0: "Rot L", 1: "Rot R", 2: "Fwd"}
 
 
-MIN_CMD_TIME = 0.25  # seconds — minimum motor pulse so hardware actually responds
-
-
-def execute_action(robot, action, config):
+def send_action(robot, action, config):
+    """Send movement command without blocking. No sleep, no stop — just set velocity."""
     wb = config["robot"].get("wheel_base", 0.175)
     tws = config["robot"].get("turn_wheel_speed", 0.3)
-    t90 = config["robot"].get("turn_time_90", 1.0)
     ms = config["robot"].get("max_speed", 0.5)
 
     if action == 0:
         w = tws / (wb / 2.0)
-        print(f"  [CMD] Rot L: move(0, {w:.2f}) for {MIN_CMD_TIME}s")
         robot.move(0.0, w)
-        time.sleep(max(t90 * TURN_ANGLE_DEG / 90.0, MIN_CMD_TIME))
-        robot.stop()
     elif action == 1:
         w = tws / (wb / 2.0)
-        print(f"  [CMD] Rot R: move(0, {-w:.2f}) for {MIN_CMD_TIME}s")
         robot.move(0.0, -w)
-        time.sleep(max(t90 * TURN_ANGLE_DEG / 90.0, MIN_CMD_TIME))
-        robot.stop()
     elif action == 2:
-        print(f"  [CMD] Fwd: move({ms:.2f}, 0) for {MIN_CMD_TIME}s")
         robot.move(ms, 0.0)
-        time.sleep(max(STEP_DIST / ms, MIN_CMD_TIME))
-        robot.stop()
 
 
 def run_calibration(get_frame, observer):
@@ -78,6 +66,8 @@ def run_policy(get_frame, robot, model, observer, config):
     print("Q=quit, SPACE=pause, R=reset\n")
     paused = False
     steps = 0
+    missed_frames = 0
+    GRACE_FRAMES = 8  # ignore this many missed frames before searching
 
     logfile = open("policy_log.txt", "w")
     logfile.write("step,action,ball_dist,ball_angle,gap_dist,gap_angle\n")
@@ -91,27 +81,6 @@ def run_policy(get_frame, robot, model, observer, config):
         obs = observer.observe(frame)
         vis = observer.annotate_frame(frame)
 
-        if obs is None:
-            logfile.write(f"{steps},SEARCH,,,, \n")
-            logfile.flush()
-            cv2.putText(vis, "SEARCHING...", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            cv2.imshow("Ball Push", vis)
-            if cv2.waitKey(30) & 0xFF == ord("q"):
-                break
-            if not paused:
-                execute_action(robot, 0, config)
-            continue
-
-        action, _ = model.predict(obs, deterministic=True)
-        action = int(action)
-        logfile.write(f"{steps},{ACTION_NAMES[action]},{obs[0]:.4f},{obs[1]:.4f},{obs[2]:.4f},{obs[3]:.4f}\n")
-        logfile.flush()
-
-        cv2.putText(vis, f"{ACTION_NAMES[action]} step:{steps} gap:{obs[2]:.2f}",
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        cv2.imshow("Ball Push", vis)
-
         key = cv2.waitKey(30) & 0xFF
         if key == ord("q"):
             break
@@ -120,14 +89,56 @@ def run_policy(get_frame, robot, model, observer, config):
             print("PAUSED" if paused else "RESUMED")
         elif key == ord("r"):
             steps = 0
+            missed_frames = 0
             print("--- Reset ---")
 
-        if not paused:
-            execute_action(robot, action, config)
-            steps += 1
-            if obs[2] < 0.05:
-                print(f"\nBall likely out at step {steps}!")
-                paused = True
+        if paused:
+            robot.stop()
+            cv2.putText(vis, "PAUSED", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.imshow("Ball Push", vis)
+            continue
+
+        # No ball visible — wait a bit, then search
+        if obs is None:
+            missed_frames += 1
+            if missed_frames <= GRACE_FRAMES:
+                robot.stop()
+                cv2.putText(vis, f"LOST BALL ({missed_frames}/{GRACE_FRAMES})", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
+                cv2.imshow("Ball Push", vis)
+            else:
+                cv2.putText(vis, "SEARCHING...", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                cv2.imshow("Ball Push", vis)
+                send_action(robot, 0, config)
+                logfile.write(f"{steps},SEARCH,,,,\n")
+                logfile.flush()
+            continue
+
+        # Ball found — reset grace counter
+        missed_frames = 0
+
+        # Ball visible — run the policy
+        action, _ = model.predict(obs, deterministic=True)
+        action = int(action)
+
+        # Clamp rotations: don't rotate the ball out of view
+        ball_angle = obs[1]
+        if action == 0 and ball_angle > 0.4:   # ball is left, don't rotate further left
+            action = 2
+        elif action == 1 and ball_angle < -0.4:  # ball is right, don't rotate further right
+            action = 2
+
+        logfile.write(f"{steps},{ACTION_NAMES[action]},{obs[0]:.4f},{obs[1]:.4f},{obs[2]:.4f},{obs[3]:.4f}\n")
+        logfile.flush()
+
+        cv2.putText(vis, f"{ACTION_NAMES[action]} step:{steps} gap:{obs[2]:.2f}",
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        cv2.imshow("Ball Push", vis)
+
+        send_action(robot, action, config)
+        steps += 1
 
     logfile.close()
     print(f"Log saved to policy_log.txt ({steps} steps)")
