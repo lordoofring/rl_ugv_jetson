@@ -20,10 +20,10 @@ class FrameObserver:
 
     def __init__(
         self,
-        ball_real_diameter: float = 0.10,
-        focal_length: float = 280.0,  # ~120° FOV on 640px wide frame
-        frame_width: int = 640,
-        frame_height: int = 480,
+        ball_real_diameter: float = 0.03,  # 3cm ball
+        focal_length: float = 140.0,  # server sends 320px wide frames
+        frame_width: int = 320,
+        frame_height: int = 240,
         # Red ball HSV ranges (red wraps around in HSV)
         ball_hsv_low1=(25, 100, 80),
         ball_hsv_high1=(10, 255, 255),

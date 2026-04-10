@@ -79,6 +79,9 @@ def run_policy(get_frame, robot, model, observer, config):
     paused = False
     steps = 0
 
+    logfile = open("policy_log.txt", "w")
+    logfile.write("step,action,ball_dist,ball_angle,gap_dist,gap_angle\n")
+
     while True:
         frame = get_frame()
         if frame is None:
@@ -89,6 +92,8 @@ def run_policy(get_frame, robot, model, observer, config):
         vis = observer.annotate_frame(frame)
 
         if obs is None:
+            logfile.write(f"{steps},SEARCH,,,, \n")
+            logfile.flush()
             cv2.putText(vis, "SEARCHING...", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             cv2.imshow("Ball Push", vis)
@@ -100,6 +105,8 @@ def run_policy(get_frame, robot, model, observer, config):
 
         action, _ = model.predict(obs, deterministic=True)
         action = int(action)
+        logfile.write(f"{steps},{ACTION_NAMES[action]},{obs[0]:.4f},{obs[1]:.4f},{obs[2]:.4f},{obs[3]:.4f}\n")
+        logfile.flush()
 
         cv2.putText(vis, f"{ACTION_NAMES[action]} step:{steps} gap:{obs[2]:.2f}",
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
@@ -122,6 +129,8 @@ def run_policy(get_frame, robot, model, observer, config):
                 print(f"\nBall likely out at step {steps}!")
                 paused = True
 
+    logfile.close()
+    print(f"Log saved to policy_log.txt ({steps} steps)")
     cv2.destroyAllWindows()
     robot.stop()
 
@@ -164,8 +173,7 @@ def main():
 
     bp = config.get("ball_push", {})
     observer = FrameObserver(
-        ball_real_diameter=bp.get("ball_radius", 0.05) * 2,
-        focal_length=280.0,
+        ball_real_diameter=bp.get("ball_radius", 0.015) * 2,  # 3cm default
     )
 
     if args.calibrate:
