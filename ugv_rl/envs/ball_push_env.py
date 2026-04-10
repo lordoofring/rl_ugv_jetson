@@ -36,8 +36,13 @@ class BallPushEnv(gym.Env):
     The square is centered at the origin with side length `arena_size`.
     The ball and robot start at random positions inside the square.
 
-    Observation (5-dim, all ego-centric):
-        [ball_dist, ball_angle, ball_to_edge_dist, ball_to_edge_angle, robot_to_edge_dist]
+    Observation (4-dim, matches FrameObserver on the real robot):
+        [ball_dist, ball_angle, gap_dist, gap_angle]
+
+    - ball_dist:  distance robot→ball in meters
+    - ball_angle: bearing to ball relative to heading, radians (-π..π)
+    - gap_dist:   distance ball→nearest edge, normalized to [0, 1]
+    - gap_angle:  direction from ball to nearest edge relative to heading (-π..π)
 
     Actions (Discrete 3):
         0 = rotate left 5°
@@ -66,16 +71,15 @@ class BallPushEnv(gym.Env):
         # Action space: rotate left, rotate right, forward
         self.action_space = spaces.Discrete(3)
 
-        # Observation: [ball_dist, ball_angle, ball_to_edge_dist, ball_to_edge_angle, robot_to_edge_dist]
-        # All values are bounded reasonably
+        # Observation: [ball_dist, ball_angle, gap_dist, gap_angle]
+        # Matches FrameObserver output for sim-to-real transfer
         obs_high = np.array([
             self.arena_size * 1.5,    # ball_dist (max ~ diagonal)
-            math.pi,                  # ball_angle (-pi to pi)
-            self.arena_size,          # ball_to_edge_dist
-            math.pi,                  # ball_to_edge_angle
-            self.arena_size,          # robot_to_edge_dist
+            math.pi,                  # ball_angle (-π to π)
+            1.0,                      # gap_dist (normalized 0..1)
+            math.pi,                  # gap_angle (-π to π)
         ], dtype=np.float32)
-        obs_low = np.array([0.0, -math.pi, 0.0, -math.pi, 0.0], dtype=np.float32)
+        obs_low = np.array([0.0, -math.pi, 0.0, -math.pi], dtype=np.float32)
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
         self.robot = robot if robot else MockRobot()
@@ -255,16 +259,19 @@ class BallPushEnv(gym.Env):
         ball_angle = ball_world_angle - self.robot_theta
         ball_angle = (ball_angle + math.pi) % (2 * math.pi) - math.pi
 
+        # gap_dist: ball-to-nearest-edge normalized to [0, 1]
+        # Matches FrameObserver which normalizes pixel gap by frame diagonal
         ball_to_edge = self._ball_to_nearest_edge()
-        ball_to_edge_angle = self._nearest_edge_angle_from_ball()
-        robot_to_edge = self._robot_to_nearest_edge()
+        gap_dist = np.clip(ball_to_edge / self.half_arena, 0.0, 1.0)
+
+        # gap_angle: direction from ball to nearest edge, relative to robot heading
+        gap_angle = self._nearest_edge_angle_from_ball()
 
         obs = np.array([
             ball_dist,
             ball_angle,
-            ball_to_edge,
-            ball_to_edge_angle,
-            robot_to_edge,
+            gap_dist,
+            gap_angle,
         ], dtype=np.float32)
         return obs
 
