@@ -58,6 +58,7 @@ class RemoteRobot(RobotInterface):
         if not self.connected: return
         try:
             NetworkProtocol.send_msg(self.sock, {"cmd": "stop"})
+            NetworkProtocol.recv_msg(self.sock)  # consume ACK to stay in sync
         except:
             pass
 

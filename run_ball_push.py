@@ -35,15 +35,18 @@ def execute_action(robot, action, config):
 
     if action == 0:
         w = tws / (wb / 2.0)
+        print(f"  [CMD] Rot L: move(0, {w:.2f}) for {MIN_CMD_TIME}s")
         robot.move(0.0, w)
         time.sleep(max(t90 * TURN_ANGLE_DEG / 90.0, MIN_CMD_TIME))
         robot.stop()
     elif action == 1:
         w = tws / (wb / 2.0)
+        print(f"  [CMD] Rot R: move(0, {-w:.2f}) for {MIN_CMD_TIME}s")
         robot.move(0.0, -w)
         time.sleep(max(t90 * TURN_ANGLE_DEG / 90.0, MIN_CMD_TIME))
         robot.stop()
     elif action == 2:
+        print(f"  [CMD] Fwd: move({ms:.2f}, 0) for {MIN_CMD_TIME}s")
         robot.move(ms, 0.0)
         time.sleep(max(STEP_DIST / ms, MIN_CMD_TIME))
         robot.stop()
