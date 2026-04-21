@@ -111,6 +111,7 @@ def run_policy(get_frame, robot, model, observer, config):
                 cv2.putText(vis, "SEARCHING...", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
                 cv2.imshow("Ball Push", vis)
+                time.sleep(.5)
                 send_action(robot, 0, config)
                 logfile.write(f"{steps},SEARCH,,,,\n")
                 logfile.flush()
