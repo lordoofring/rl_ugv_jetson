@@ -27,7 +27,7 @@ ACTION_NAMES = {0: "Rot L", 1: "Rot R", 2: "Fwd"}
 def send_action(robot, action, config):
     """Send movement command without blocking. No sleep, no stop — just set velocity."""
     wb = config["robot"].get("wheel_base", 0.175)
-    tws = config["robot"].get("turn_wheel_speed", 0.3)
+    tws = config["robot"].get("turn_wheel_speed", 0.03)
     ms = config["robot"].get("max_speed", 0.5)
 
     if action == 0:
