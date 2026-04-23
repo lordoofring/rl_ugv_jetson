@@ -27,7 +27,7 @@ ACTION_NAMES = {0: "Rot L", 1: "Rot R", 2: "Fwd"}
 def send_action(robot, action, config):
     """Send movement command without blocking. No sleep, no stop — just set velocity."""
     wb = config["robot"].get("wheel_base", 0.175)
-    tws = config["robot"].get("turn_wheel_speed", 0.3)
+    tws = config["robot"].get("turn_wheel_speed", 0.03)
     ms = config["robot"].get("max_speed", 0.5)
 
     if action == 0:
@@ -111,6 +111,7 @@ def run_policy(get_frame, robot, model, observer, config):
                 cv2.putText(vis, "SEARCHING...", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
                 cv2.imshow("Ball Push", vis)
+                time.sleep(.5)
                 send_action(robot, 0, config)
                 logfile.write(f"{steps},SEARCH,,,,\n")
                 logfile.flush()
