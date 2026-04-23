@@ -73,7 +73,7 @@ def run_calibration(get_frame, observer):
     cv2.destroyAllWindows()
 
 
-def run_policy(get_frame, robot, model, observer, config):
+def run_policy(get_frame, robot, model, observer, config, wiggle=False):
     print("\n--- Running Policy (Pure RL) ---")
     print("Q=quit, SPACE=pause, R=reset\n")
     paused = False
@@ -118,8 +118,7 @@ def run_policy(get_frame, robot, model, observer, config):
         action, _ = model.predict(obs, deterministic=True)
         action = int(action)
 
-        # Wiggle room: if ball is roughly centered, go forward
-        if obs[0] > 0.5 and abs(obs[2]) < 0.2 and action != 2:
+        if wiggle and obs[0] > 0.5 and abs(obs[2]) < 0.2 and action != 2:
             action = 2
 
         visible = "Y" if obs[0] > 0.5 else "N"
@@ -162,6 +161,8 @@ def main():
     parser.add_argument("--local", action="store_true")
     parser.add_argument("--calibrate", action="store_true")
     parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--wiggle", action="store_true",
+                        help="Force forward when ball is centered (overrides pure RL)")
     args = parser.parse_args()
 
     with open("config.yaml", "r") as f:
@@ -201,7 +202,7 @@ def main():
     else:
         model = PPO.load(args.model)
         print(f"Model loaded: {args.model}")
-        run_policy(get_frame, robot, model, observer, config)
+        run_policy(get_frame, robot, model, observer, config, args.wiggle)
 
     if robot:
         robot.stop()

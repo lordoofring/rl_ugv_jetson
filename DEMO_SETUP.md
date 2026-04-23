@@ -20,9 +20,10 @@ cd rl_ugv_jetson
 pip install -r requirements.txt
 ```
 
-> If you get a conflict with opencv, run this instead:
+> If you get a conflict with opencv, uninstall the existing version first:
 > ```bash
-> pip install stable-baselines3 opencv-python pyyaml gymnasium shimmy numpy
+> pip uninstall opencv-python opencv-contrib-python opencv-python-headless -y
+> pip install -r requirements.txt
 > ```
 
 ---
@@ -37,9 +38,20 @@ pip install -r requirements.txt
 
 ---
 
-## Step 4 — Start the Server on the Robot
+## Step 4 — Open Two Terminals
 
-Open a terminal and SSH into the Jetson:
+You need **two terminals open at the same time** for the rest of the steps.
+
+- **Terminal 1** → talks to the robot (SSH)
+- **Terminal 2** → runs the policy on your laptop
+
+Open both now before continuing.
+
+---
+
+## Step 5 — Terminal 1: Start the Server on the Robot
+
+In **Terminal 1**, SSH into the Jetson:
 
 ```bash
 ssh jetson@192.168.50.5
@@ -53,13 +65,13 @@ Once logged in, start the server:
 python3 ~/ugv_rl/run_server.py
 ```
 
-Leave this terminal open. You should see `Server listening...` or similar.
+You should see `Server listening...` or similar. **Leave Terminal 1 open and do not close it.**
 
 ---
 
-## Step 5 — Run the Policy on Your Laptop
+## Step 6 — Terminal 2: Run the Policy on Your Laptop
 
-Open a **second terminal** on your laptop, navigate to the repo, and run:
+In **Terminal 2** on your laptop (not SSH — your own machine), navigate to the repo and run:
 
 ```bash
 cd rl_ugv_jetson
@@ -96,4 +108,4 @@ If it's running, kill it with `kill <PID>` and restart.
 Make sure you're running the command in a regular terminal (not over SSH).
 
 **Robot not moving?**  
-Check the first terminal — the server may have crashed. Press Ctrl+C and rerun `python3 ~/ugv_rl/run_server.py`.
+Check Terminal 1 — the server may have crashed. Press Ctrl+C and rerun `python3 ~/ugv_rl/run_server.py`.
