@@ -33,6 +33,8 @@ def send_action(robot, action, config):
     t90 = config["robot"].get("turn_time_90", 1.0)
     ms = config["robot"].get("max_speed", 0.5)
 
+    settle = 0.5  # seconds for motors to fully stop before next frame
+
     if action == 0:
         w = tws / (wb / 2.0)
         robot.move(0.0, w)
@@ -48,6 +50,8 @@ def send_action(robot, action, config):
         time.sleep(max(STEP_DIST / ms, MIN_CMD_TIME))
         robot.stop()
 
+    time.sleep(settle)
+
 
 def run_calibration(get_frame, observer):
     print("\n--- Calibration ---")
@@ -57,8 +61,7 @@ def run_calibration(get_frame, observer):
         if frame is None:
             time.sleep(0.1)
             continue
-        vis = observer.annotate_frame(frame)
-        obs = observer.observe(frame)
+        obs, vis = observer.observe_and_annotate(frame)
         if obs is not None:
             txt = f"dist={obs[0]:.2f}m ang={math.degrees(obs[1]):.0f} gap={obs[2]:.2f}"
             cv2.putText(vis, txt, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
@@ -85,8 +88,7 @@ def run_policy(get_frame, robot, model, observer, config):
             time.sleep(0.05)
             continue
 
-        vis = observer.annotate_frame(frame)
-        raw_obs = observer.observe(frame)
+        raw_obs, vis = observer.observe_and_annotate(frame)
 
         # Build the 5-dim observation matching the sim env
         if raw_obs is not None:
@@ -116,6 +118,10 @@ def run_policy(get_frame, robot, model, observer, config):
         action, _ = model.predict(obs, deterministic=True)
         action = int(action)
 
+        # Wiggle room: if ball is roughly centered, go forward
+        if obs[0] > 0.5 and abs(obs[2]) < 0.2 and action != 2:
+            action = 2
+
         visible = "Y" if obs[0] > 0.5 else "N"
         logfile.write(f"{steps},{ACTION_NAMES[action]},{visible},{obs[1]:.4f},{obs[2]:.4f},{obs[3]:.4f},{obs[4]:.4f}\n")
         logfile.flush()
@@ -129,6 +135,16 @@ def run_policy(get_frame, robot, model, observer, config):
             color = (0, 0, 255)
         cv2.putText(vis, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         cv2.imshow("Ball Push", vis)
+
+        # Ball at/past boundary — stop, don't follow it out
+        gap_dist = obs[3] if obs[0] > 0.5 else 1.0
+        if gap_dist < 0.05:
+            print(f"\n*** BALL OUT at step {steps}! Stopping. ***")
+            robot.stop()
+            cv2.putText(vis, "BALL OUT!", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+            cv2.imshow("Ball Push", vis)
+            cv2.waitKey(3000)
+            break
 
         send_action(robot, action, config)
         steps += 1
@@ -177,7 +193,7 @@ def main():
 
     bp = config.get("ball_push", {})
     observer = FrameObserver(
-        ball_real_diameter=bp.get("ball_radius", 0.015) * 2,
+        ball_real_diameter=bp.get("ball_radius", 0.07) * 2,
     )
 
     if args.calibrate:

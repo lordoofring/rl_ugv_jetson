@@ -21,9 +21,9 @@ vision:
 
 ball_push:
   arena_size: 2.0       # square side length in meters
-  ball_radius: 0.015    # ball radius in meters (3cm diameter)
+  ball_radius: 0.07     # ball radius in meters (14cm diameter)
   step_dist: 0.05       # forward move distance in meters
-  push_radius: 0.10     # robot-ball contact distance
+  push_radius: 0.20     # robot-ball contact distance (larger for 14cm ball)
   robot_radius: 0.12    # approximate robot body radius
   fov_half_deg: 30        # half FOV in degrees (60° total, matching cropped camera)
   max_steps: 500

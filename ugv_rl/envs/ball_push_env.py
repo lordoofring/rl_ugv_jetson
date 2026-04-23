@@ -63,14 +63,19 @@ class BallPushEnv(gym.Env):
 
         bp_cfg = self.config.get("ball_push", {})
         self.arena_size = bp_cfg.get("arena_size", 2.0)
-        self.ball_radius = bp_cfg.get("ball_radius", 0.015)
+        self.ball_radius = bp_cfg.get("ball_radius", 0.07)   # 14cm diameter ball
         self.step_dist = bp_cfg.get("step_dist", 0.05)
-        self.push_radius = bp_cfg.get("push_radius", 0.12)
+        self.push_radius = bp_cfg.get("push_radius", 0.20)   # larger for 14cm ball
         self.max_steps = bp_cfg.get("max_steps", 500)
         self.robot_radius = bp_cfg.get("robot_radius", 0.12)
 
         # FOV half-angle in radians (±30° = 60° total, matching cropped camera)
         self.fov_half = math.radians(bp_cfg.get("fov_half_deg", 30))
+
+        # Camera params — must match FrameObserver exactly
+        self.focal_length = 107.0
+        self.cam_cx = 80.0    # center of 160px cropped frame
+        self.frame_diag = math.sqrt(160**2 + 240**2)
 
         self.half_arena = self.arena_size / 2.0
 
@@ -264,10 +269,27 @@ class BallPushEnv(gym.Env):
         return rel_angle
 
     # ------------------------------------------------------------------
+    # Camera projection
+    # ------------------------------------------------------------------
+
+    def _world_to_image_x(self, world_x, world_y):
+        """Project a world point to camera image x. Returns None if behind camera."""
+        dx = world_x - self.robot_x
+        dy = world_y - self.robot_y
+        forward = dx * math.cos(self.robot_theta) + dy * math.sin(self.robot_theta)
+        right = dx * math.sin(self.robot_theta) - dy * math.cos(self.robot_theta)
+        if forward <= 0.01:
+            return None
+        return self.cam_cx + (right / forward) * self.focal_length
+
+    # ------------------------------------------------------------------
     # Observation
     # ------------------------------------------------------------------
 
     def _get_obs(self):
+        if not self._ball_in_fov():
+            return np.zeros(5, dtype=np.float32)
+
         dx = self.ball_x - self.robot_x
         dy = self.ball_y - self.robot_y
         ball_dist = math.sqrt(dx * dx + dy * dy)
@@ -275,28 +297,33 @@ class BallPushEnv(gym.Env):
         ball_angle = ball_world_angle - self.robot_theta
         ball_angle = (ball_angle + math.pi) % (2 * math.pi) - math.pi
 
-        if self._ball_in_fov():
-            ball_to_edge = self._ball_to_nearest_edge()
-            gap_dist = np.clip(ball_to_edge / self.half_arena, 0.0, 1.0)
-            gap_angle = self._nearest_edge_angle_from_ball()
+        # Project ball and nearest edge point into image space
+        ball_px = self._world_to_image_x(self.ball_x, self.ball_y)
 
-            obs = np.array([
-                1.0,           # ball_visible
-                ball_dist,
-                ball_angle,
-                gap_dist,
-                gap_angle,
-            ], dtype=np.float32)
+        # Find nearest edge target point (same logic as before)
+        dists = {
+            "right":  self.half_arena - self.ball_x,
+            "left":   self.half_arena + self.ball_x,
+            "top":    self.half_arena - self.ball_y,
+            "bottom": self.half_arena + self.ball_y,
+        }
+        nearest = min(dists, key=dists.get)
+        if nearest == "right":   tx, ty = self.half_arena,  self.ball_y
+        elif nearest == "left":  tx, ty = -self.half_arena, self.ball_y
+        elif nearest == "top":   tx, ty = self.ball_x,      self.half_arena
+        else:                    tx, ty = self.ball_x,      -self.half_arena
+
+        tape_px = self._world_to_image_x(tx, ty)
+
+        if ball_px is not None and tape_px is not None:
+            gap_pixels = abs(ball_px - tape_px)
+            gap_dist = gap_pixels / self.frame_diag
+            gap_angle = math.atan2(tape_px - ball_px, self.focal_length)
         else:
-            obs = np.array([
-                0.0,           # ball NOT visible
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-            ], dtype=np.float32)
+            gap_dist = 1.0
+            gap_angle = 0.0
 
-        return obs
+        return np.array([1.0, ball_dist, ball_angle, gap_dist, gap_angle], dtype=np.float32)
 
     def render(self, mode="human"):
         pass
