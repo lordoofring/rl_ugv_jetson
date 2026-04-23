@@ -62,7 +62,7 @@ Password: **jetson**
 Once logged in, start the server:
 
 ```bash
-python3 ~/ugv_rl/run_server.py
+python3 ~/CS2320/rl_ugv_jetson/run_server.py
 ```
 
 You should see `Server listening...` or similar. **Leave Terminal 1 open and do not close it.**
