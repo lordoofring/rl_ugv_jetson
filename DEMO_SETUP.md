@@ -1,4 +1,4 @@
-# UGV Ball Push Demo — Classmate Setup
+# UGV Ball Push UT EXPLORER day instructions
 
 ## What You Need
 - Python 3.8 or newer
