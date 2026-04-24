@@ -53,15 +53,22 @@ def send_action(robot, action, config):
     time.sleep(settle)
 
 
+def collect_frames(get_frame, n):
+    """Grab n non-None frames as fast as possible."""
+    frames = []
+    while len(frames) < n:
+        f = get_frame()
+        if f is not None:
+            frames.append(f)
+    return frames
+
+
 def run_calibration(get_frame, observer):
     print("\n--- Calibration ---")
     print("Green=ball, Blue=tape, Yellow=gap. Q to quit.\n")
     while True:
-        frame = get_frame()
-        if frame is None:
-            time.sleep(0.1)
-            continue
-        obs, vis = observer.observe_and_annotate(frame)
+        frames = collect_frames(get_frame, observer.n_frames)
+        obs, vis = observer.observe_and_annotate_multi(frames)
         if obs is not None:
             txt = f"dist={obs[0]:.2f}m ang={math.degrees(obs[1]):.0f} gap={obs[2]:.2f}"
             cv2.putText(vis, txt, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
@@ -83,12 +90,8 @@ def run_policy(get_frame, robot, model, observer, config, wiggle=False):
     logfile.write("step,action,visible,ball_dist,ball_angle,gap_dist,gap_angle\n")
 
     while True:
-        frame = get_frame()
-        if frame is None:
-            time.sleep(0.05)
-            continue
-
-        raw_obs, vis = observer.observe_and_annotate(frame)
+        frames = collect_frames(get_frame, observer.n_frames)
+        raw_obs, vis = observer.observe_and_annotate_multi(frames)
 
         # Build the 5-dim observation matching the sim env
         if raw_obs is not None:
