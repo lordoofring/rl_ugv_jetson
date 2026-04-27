@@ -1,5 +1,5 @@
 """
-Red ball detector using HSV color thresholding.
+Yellow ball detector using HSV color thresholding.
 
 Returns the ball's position relative to the camera frame:
   - angle (left/right offset from center)
@@ -14,7 +14,7 @@ import numpy as np
 
 
 class BallDetector:
-    """Detect a red ball in a camera frame and estimate relative position."""
+    """Detect a yellow ball in a camera frame and estimate relative position."""
 
     def __init__(
         self,
@@ -23,10 +23,10 @@ class BallDetector:
         focal_length: float = 500.0,
         frame_width: int = 640,
         frame_height: int = 480,
-        hsv_low1=(0, 120, 70),
-        hsv_high1=(10, 255, 255),
-        hsv_low2=(170, 120, 70),
-        hsv_high2=(180, 255, 255),
+        hsv_low1=(20, 100, 100),
+        hsv_high1=(35, 255, 255),
+        hsv_low2=(20, 100, 100),    # yellow has no HSV wraparound; mirrors range 1
+        hsv_high2=(35, 255, 255),
     ):
         """
         Args:
@@ -34,8 +34,8 @@ class BallDetector:
             ball_real_diameter: Actual ball diameter in meters.
             focal_length:      Approximate camera focal length in pixels.
             frame_width/height: Expected frame dimensions.
-            hsv_low1/high1:    Lower red HSV range.
-            hsv_low2/high2:    Upper red HSV range (red wraps around in HSV).
+            hsv_low1/high1:    Yellow HSV range.
+            hsv_low2/high2:    Mirrors range 1 (yellow has no hue wraparound).
         """
         self.ball_real_diameter = ball_real_diameter
         self.focal_length = focal_length

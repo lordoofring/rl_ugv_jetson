@@ -1,5 +1,5 @@
 """
-HSV Tuner — adjust sliders to isolate the red ball.
+HSV Tuner — adjust sliders to isolate the yellow ball.
 
 Usage:
     python tune_hsv.py --ip <JETSON_IP>
@@ -18,13 +18,13 @@ def nothing(x):
 
 
 SLIDER_NAMES = [
-    ("H1 Low",  0),
-    ("H1 High", 10),
-    ("H2 Low",  170),
-    ("H2 High", 180),
+    ("H1 Low",  20),
+    ("H1 High", 35),
+    ("H2 Low",  20),
+    ("H2 High", 35),
     ("S Low",   100),
     ("S High",  255),
-    ("V Low",   80),
+    ("V Low",   100),
     ("V High",  255),
 ]
 

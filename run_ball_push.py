@@ -33,7 +33,7 @@ def send_action(robot, action, config):
     t90 = config["robot"].get("turn_time_90", 1.0)
     ms = config["robot"].get("max_speed", 0.5)
 
-    settle = 0.5  # seconds for motors to fully stop before next frame
+    settle = 1  # seconds for motors to fully stop before next frame
 
     if action == 0:
         w = tws / (wb / 2.0)

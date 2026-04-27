@@ -2,7 +2,7 @@
 Extract observations from a camera frame for the Ball Push task.
 
 Detects:
-  - Red ball (HSV thresholding) → ball_dist, ball_angle
+  - Yellow ball (HSV thresholding) → ball_dist, ball_angle
   - Blue tape (HSV thresholding) → gap_dist, gap_angle
 
 Works identically on real camera frames and Isaac Sim rendered frames.
@@ -24,10 +24,10 @@ class FrameObserver:
         focal_length: float = 107.0,  # calibrated: 60cm true dist, 14cm ball, 12.5px radius
         frame_width: int = 320,
         frame_height: int = 240,
-        ball_hsv_low1=(25, 100, 80),
-        ball_hsv_high1=(10, 255, 255),
-        ball_hsv_low2=(165, 100, 80),
-        ball_hsv_high2=(180, 255, 255),
+        ball_hsv_low1=(20, 100, 100),
+        ball_hsv_high1=(35, 255, 255),
+        ball_hsv_low2=(20, 100, 100),   # yellow has no HSV wraparound; mirrors range 1
+        ball_hsv_high2=(35, 255, 255),
         tape_hsv_low=(90, 80, 50),
         tape_hsv_high=(130, 255, 255),
     ):
