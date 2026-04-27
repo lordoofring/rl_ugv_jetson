@@ -6,6 +6,7 @@
 - Git installed
 
 ---
+*(If you have done these steps already, skip to step 3)*
 
 ## Step 1 — Clone the Repo
 
@@ -27,6 +28,7 @@ pip install -r requirements.txt
 > ```
 
 ---
+**note: run `git pull` to ensure your local repo is synchronized with the latest changes**
 
 ## Step 3 — Connect to the Robot's WiFi
 
