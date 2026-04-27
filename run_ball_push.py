@@ -134,17 +134,6 @@ def run_policy(get_frame, robot, model, observer, config, wiggle=False):
             color = (0, 0, 255)
         cv2.putText(vis, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         cv2.imshow("Ball Push", vis)
-
-        # Ball at/past boundary — stop, don't follow it out
-        gap_dist = obs[3] if obs[0] > 0.5 else 1.0
-        if gap_dist < 0.05:
-            print(f"\n*** BALL OUT at step {steps}! Stopping. ***")
-            robot.stop()
-            cv2.putText(vis, "BALL OUT!", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
-            cv2.imshow("Ball Push", vis)
-            cv2.waitKey(3000)
-            break
-
         send_action(robot, action, config)
         steps += 1
 
